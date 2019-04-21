@@ -1,4 +1,5 @@
 pub mod codegen;
+pub mod optimize;
 pub mod error;
 pub mod instruct;
 pub mod integer;
@@ -8,15 +9,25 @@ extern crate num_traits;
 
 use std::io::{Read, Write};
 use num_traits::Signed;
-use integer::BrainfuckInteger;
-use error::Error;
-use instruct::Instruct;
+pub use integer::BrainfuckInteger;
+pub use error::Error;
+pub use instruct::Instruct;
 use indent::indent;
 
 pub struct Brainfuck<Int: BrainfuckInteger + Signed> {
     code: Vec<Instruct<Int>>,
     loop_stack: Vec<usize>,
     phantom: std::marker::PhantomData<Int>
+}
+
+impl<Int: BrainfuckInteger + Signed> Clone for Brainfuck<Int> {
+    fn clone(&self) -> Self {
+        Brainfuck {
+            code: self.code.to_vec(),
+            loop_stack: self.loop_stack.to_vec(),
+            phantom: std::marker::PhantomData,
+        }
+    }
 }
 
 impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
@@ -158,250 +169,19 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
         }
     }
 
-    pub fn optimize_fold(&self) -> Self {
-        let mut code = Self::new();
-        let mut index = 0usize;
-
-        loop {
-            if let Some(instr) = self.code.get(index) {
-                index += 1;
-                match *instr {
-                    Instruct::Move(val1) => {
-                        let mut val = val1;
-                        while let Some(Instruct::Move(val2)) = self.code.get(index) {
-                            index += 1;
-                            val += *val2;
-                        }
-                        code.push_move(val);
-                    },
-                    Instruct::Add(val1) => {
-                        let mut val = val1;
-                        while let Some(Instruct::Add(val2)) = self.code.get(index) {
-                            index += 1;
-                            val = val + *val2;
-                        }
-                        code.push_add(val);
-                    },
-                    Instruct::Set(val1) => {
-                        let mut val = val1;
-                        while let Some(Instruct::Set(val2)) = self.code.get(index) {
-                            index += 1;
-                            val = *val2;
-                        }
-                        code.push_set(val);
-                    },
-                    _ => code.push_ref(instr)
-                }
-            } else {
-                break;
-            }
+    pub fn optimize(&self, options: optimize::Options) -> std::io::Result<Self> {
+        let mut code = if options.fold { optimize::fold(self) } else { self.clone() };
+        if options.set   { code = optimize::set(&code); }
+        if options.write { code = optimize::write(&code); }
+        if options.fold  { code = optimize::fold(&code); }
+        if options.constexpr {
+            code = optimize::constexpr(&code, options.constexpr_echo)?;
         }
-
-        return code;
-    }
-
-    pub fn optimize_set(&self) -> Self {
-        let mut code = Self::new();
-        let mut index = 0usize;
-
-        loop {
-            match (self.code.get(index), self.code.get(index + 1), self.code.get(index + 2), self.code.get(index + 3)) {
-                (Some(Instruct::LoopStart(_)), Some(Instruct::Add(_)), Some(Instruct::LoopEnd(_)), Some(Instruct::Add(val))) => {
-                    index += 4;
-                    code.push_set(*val);
-                    continue;
-                },
-                _ => {}
-            }
-
-            if let (Some(Instruct::LoopStart(_)), Some(Instruct::Add(_)), Some(Instruct::LoopEnd(_))) =
-                    (self.code.get(index), self.code.get(index + 1), self.code.get(index + 2)) {
-                index += 3;
-                code.push_set(Int::zero());
-                continue;
-            }
-
-            if let Some(instr) = self.code.get(index) {
-                index += 1;
-                code.push_ref(instr);
-            } else {
-                break;
-            }
-        }
-
-        return code;
-    }
-
-    fn optimize_write_str(&self, mut index: usize, data: &mut Vec<u8>) -> usize {
-        let mut last_val = data[data.len() - 1];
-        loop {
-            if let (Some(Instruct::Set(val)), Some(Instruct::Write)) = (self.code.get(index), self.code.get(index + 1)) {
-                index += 2;
-                last_val = val.get_least_byte();
-                data.push(last_val);
-            } else if let Some(Instruct::Write) = self.code.get(index) {
-                index += 1;
-                data.push(last_val);
-            } else if let Some(Instruct::WriteStr(data2)) = self.code.get(index) {
-                index += 1;
-                data.extend(data2);
-            } else {
-                break;
-            }
-        }
-        return index;
-    }
-
-    pub fn optimize_write(&self) -> Self {
-        let mut code = Self::new();
-        let mut index = 0usize;
-
-        loop {
-            match (self.code.get(index), self.code.get(index + 1)) {
-                (Some(Instruct::Set(val)), Some(Instruct::Write)) => {
-                    index += 2;
-                    let mut data = vec![val.get_least_byte()];
-                    index = self.optimize_write_str(index, &mut data);
-                    code.push_write_str(data);
-                    continue;
-                },
-                _ => {}
-            }
-
-            if let Some(instr) = self.code.get(index) {
-                index += 1;
-                if let Instruct::WriteStr(data) = instr {
-                    if data.len() > 0 {
-                        let mut data = data.to_vec();
-                        index = self.optimize_write_str(index, &mut data);
-                        code.push_write_str(data);
-                    }
-                } else {
-                    code.push_ref(instr);
-                }
-            } else {
-                break;
-            }
-        }
-
-        return code;
-    }
-
-    pub fn optimize_constexpr(&self) -> Self {
-        let mut code = Self::new();
-        let mut mem = Vec::<Int>::new();
-        let mut ptr = 0usize;
-        let mut pc  = 0usize;
-
-        loop {
-            if let Some(instr) = self.code.get(pc) {
-                match *instr {
-                    Instruct::Move(off) => {
-                        pc += 1;
-                        if off == std::isize::MIN || (ptr as isize) < -off {
-                            // XXX: what to do when pointer < 0?
-                            code.push_move(off);
-                            break;
-                        }
-                        ptr = ((ptr as isize) + off) as usize;
-                    },
-
-                    Instruct::Add(val) => {
-                        pc += 1;
-                        if ptr >= mem.len() {
-                            mem.resize(ptr + 1, Int::zero());
-                        }
-                        mem[ptr] = mem[ptr].wrapping_add(&val);
-                    },
-
-                    Instruct::Set(val) => {
-                        pc += 1;
-                        if ptr >= mem.len() {
-                            mem.resize(ptr + 1, Int::zero());
-                        }
-                        mem[ptr] = val;
-                    },
-
-                    Instruct::Read => {
-                        pc += 1;
-                        code.push_read();
-                        break;
-                    },
-
-                    Instruct::Write => {
-                        pc += 1;
-                        if ptr >= mem.len() {
-                            mem.resize(ptr + 1, Int::zero());
-                        }
-                        let data = vec![mem[ptr].get_least_byte()];
-                        std::io::stdout().write_all(&data); // DEBUG
-                        code.push_write_str(data);
-                    },
-
-                    Instruct::WriteStr(ref data) => {
-                        pc += 1;
-                        std::io::stdout().write_all(data); // DEBUG
-                        code.push_write_str(data.to_vec());
-                    },
-
-                    Instruct::LoopStart(pc_false) => {
-                        if ptr >= mem.len() {
-                            mem.resize(ptr + 1, Int::zero());
-                        }
-                        if mem[ptr] == Int::zero() {
-                            pc = pc_false;
-                        } else {
-                            pc += 1;
-                        }
-                    },
-
-                    Instruct::LoopEnd(pc_loop_start) => {
-                        pc = pc_loop_start;
-                    }
-                }
-            } else {
-                break;
-            }
-        }
-
-        if pc < self.code.len() {
-            let mut current_ptr = ptr;
-            for (target_ptr, val) in mem.iter().enumerate() {
-                if *val != Int::zero() {
-                    if current_ptr != target_ptr {
-                        let off = (target_ptr as isize) - (ptr as isize);
-                        code.push_move(off);
-                        current_ptr = target_ptr;
-                    }
-                    code.push_set(*val);
-                }
-            }
-
-            if current_ptr != ptr {
-                let off = (ptr as isize) - (ptr as isize);
-                code.push_move(off);
-            }
-
-            while let Some(instr) = self.code.get(pc) {
-                code.push_ref(instr);
-                pc += 1;
-            }
-        }
-
-        return code;
-    }
-
-    pub fn optimize(&self) -> Self {
-        let code = self.optimize_fold();
-        let code = code.optimize_set();
-        let code = code.optimize_write();
-        let code = code.optimize_fold();
-        let code = code.optimize_constexpr();
-        let code = code.optimize_fold();
-        let code = code.optimize_set();
-        let code = code.optimize_write();
-        let code = code.optimize_fold();
-        return code;
+        if options.fold  { code = optimize::fold(&code); }
+        if options.set   { code = optimize::set(&code); }
+        if options.write { code = optimize::write(&code); }
+        if options.fold  { code = optimize::fold(&code); }
+        return Ok(code);
     }
 
     pub fn exec(&self) -> std::io::Result<()> {

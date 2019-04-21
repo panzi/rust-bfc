@@ -16,10 +16,8 @@ mod brainfuck;
 
 extern crate num_traits;
 
-use std::fs::File;
-use brainfuck::Brainfuck;
-use brainfuck::error::Error;
-use brainfuck::codegen::c::generate as generate_c_code;
+use brainfuck::{Brainfuck, Error};
+use brainfuck::optimize::Options;
 
 fn main() -> std::result::Result<(), Error> {
     let args: Vec<String> = std::env::args().collect();
@@ -28,11 +26,9 @@ fn main() -> std::result::Result<(), Error> {
     }
     let code = std::fs::read_to_string(&args[1])?;
     let code = Brainfuck::<i64>::from_str(&code)?;
-    let code = code.optimize();
-    //generate_c_code(code, file)
+    let code = code.optimize(Options::default())?;
 
-    let mut file = File::create("out.c")?;
-    generate_c_code(&code, &mut file)?;
+    brainfuck::codegen::c::compile(&code, "a.out", true)?;
     //code.debug_code(&mut file)?;
 
     //code.exec()?;
