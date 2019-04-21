@@ -18,13 +18,13 @@ use num_traits::{PrimInt, Signed, WrappingShl, WrappingAdd};
 use std::fs::File;
 use std::io::{Read, Write};
 
-trait BFInt: PrimInt + WrappingShl + WrappingAdd + std::fmt::Debug {
+trait BrainfuckInteger: PrimInt + WrappingShl + WrappingAdd + std::fmt::Debug {
     fn c_type() -> &'static str;
     fn get_least_byte(self) -> u8;
     fn from_byte(value: u8) -> Self;
 }
 
-impl BFInt for u8 {
+impl BrainfuckInteger for u8 {
     #[inline]
     fn get_least_byte(self) -> u8 {
         self
@@ -40,7 +40,7 @@ impl BFInt for u8 {
     }
 }
 
-impl BFInt for i8 {
+impl BrainfuckInteger for i8 {
     #[inline]
     fn get_least_byte(self) -> u8 {
         self as u8
@@ -56,7 +56,7 @@ impl BFInt for i8 {
     }
 }
 
-impl BFInt for u16 {
+impl BrainfuckInteger for u16 {
     #[inline]
     fn get_least_byte(self) -> u8 {
         (self & 0xFF) as u8
@@ -72,7 +72,7 @@ impl BFInt for u16 {
     }
 }
 
-impl BFInt for i16 {
+impl BrainfuckInteger for i16 {
     #[inline]
     fn get_least_byte(self) -> u8 {
         (self & 0xFF) as u8
@@ -88,7 +88,7 @@ impl BFInt for i16 {
     }
 }
 
-impl BFInt for u32 {
+impl BrainfuckInteger for u32 {
     #[inline]
     fn get_least_byte(self) -> u8 {
         (self & 0xFF) as u8
@@ -104,7 +104,7 @@ impl BFInt for u32 {
     }
 }
 
-impl BFInt for i32 {
+impl BrainfuckInteger for i32 {
     #[inline]
     fn get_least_byte(self) -> u8 {
         (self & 0xFF) as u8
@@ -120,7 +120,7 @@ impl BFInt for i32 {
     }
 }
 
-impl BFInt for u64 {
+impl BrainfuckInteger for u64 {
     #[inline]
     fn get_least_byte(self) -> u8 {
         (self & 0xFF) as u8
@@ -136,7 +136,7 @@ impl BFInt for u64 {
     }
 }
 
-impl BFInt for i64 {
+impl BrainfuckInteger for i64 {
     #[inline]
     fn get_least_byte(self) -> u8 {
         (self & 0xFF) as u8
@@ -152,7 +152,7 @@ impl BFInt for i64 {
     }
 }
 
-impl BFInt for isize {
+impl BrainfuckInteger for isize {
     #[inline]
     fn get_least_byte(self) -> u8 {
         (self & 0xFF) as u8
@@ -168,7 +168,7 @@ impl BFInt for isize {
     }
 }
 
-impl BFInt for usize {
+impl BrainfuckInteger for usize {
     #[inline]
     fn get_least_byte(self) -> u8 {
         (self & 0xFF) as u8
@@ -184,7 +184,8 @@ impl BFInt for usize {
     }
 }
 
-enum Instruct<Int: BFInt + Signed> {
+#[derive(Debug)]
+enum Instruct<Int: BrainfuckInteger + Signed> {
     Move(isize),
     Add(Int),
     Set(Int),
@@ -195,24 +196,9 @@ enum Instruct<Int: BFInt + Signed> {
     WriteStr(Vec<u8>)
 }
 
-const MOVE       :u8 = 1;
-const ADD        :u8 = 2;
-const SET        :u8 = 3;
-const READ       :u8 = 4;
-const WRITE      :u8 = 5;
-const LOOP_START :u8 = 6;
-const LOOP_END   :u8 = 7;
-const WRITE_STR  :u8 = 8;
-
-struct Bytecode<Int: BFInt + Signed> {
-    bytes: Vec<u8>,
+struct Brainfuck<Int: BrainfuckInteger + Signed> {
+    code: Vec<Instruct<Int>>,
     loop_stack: Vec<usize>,
-    phantom: std::marker::PhantomData<Int>
-}
-
-struct BytecodeIter<'a, Int: BFInt + Signed> {
-    code: &'a Bytecode<Int>,
-    index: usize,
     phantom: std::marker::PhantomData<Int>
 }
 
@@ -229,18 +215,14 @@ impl std::convert::From<std::io::Error> for Error {
     }
 }
 
-impl<Int: BFInt + Signed> Bytecode<Int> {
-    pub fn iter<'a>(&'a self) -> BytecodeIter<'a, Int> {
-        BytecodeIter {
-            code: &self,
-            index: 0,
-            phantom: std::marker::PhantomData
-        }
+impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
+    pub fn iter(&self) -> std::slice::Iter<Instruct<Int>> {
+        self.code.iter()
     }
 
-    pub fn new() -> Bytecode<Int> {
-        Bytecode {
-            bytes: vec![],
+    pub fn new() -> Brainfuck<Int> {
+        Brainfuck {
+            code: vec![],
             loop_stack: Vec::<usize>::new(),
             phantom: std::marker::PhantomData
         }
@@ -320,198 +302,91 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
     }
 
     pub fn push_move(&mut self, val: isize) {
-        self.bytes.push(MOVE);
-        self.push_val::<isize>(val);
+        self.code.push(Instruct::Move(val));
     }
 
     pub fn push_add(&mut self, val: Int) {
-        self.bytes.push(ADD);
-        self.push_int(val);
+        self.code.push(Instruct::Add(val));
     }
 
     pub fn push_set(&mut self, val: Int) {
-        self.bytes.push(SET);
-        self.push_int(val);
+        self.code.push(Instruct::Set(val));
     }
 
     pub fn push_read(&mut self) {
-        self.bytes.push(READ);
+        self.code.push(Instruct::Read);
     }
 
     pub fn push_write(&mut self) {
-        self.bytes.push(WRITE);
+        self.code.push(Instruct::Write);
     }
 
     pub fn push_loop_start(&mut self) {
-        self.loop_stack.push(self.bytes.len());
-        self.bytes.push(LOOP_START);
-        self.push_usize(std::usize::MAX);
+        self.loop_stack.push(self.code.len());
+        self.code.push(Instruct::LoopStart(std::usize::MAX));
     }
 
     pub fn push_loop_end(&mut self) {
         let ptr = self.loop_stack.pop().unwrap();
-        self.bytes.push(LOOP_END);
-        self.push_usize(ptr);
-        self.set_val::<usize>(ptr + 1, self.bytes.len());
+        self.code.push(Instruct::LoopEnd(ptr));
+        let end_ptr = self.code.len();
+        std::mem::replace(&mut self.code[ptr], Instruct::LoopStart(end_ptr));
     }
 
-    pub fn push_write_str(&mut self, val: &[u8]) {
-        self.bytes.push(WRITE_STR);
-        self.push_usize(val.len());
-        self.bytes.extend(val);
+    pub fn push_write_str(&mut self, val: Vec<u8>) {
+        self.code.push(Instruct::WriteStr(val));
     }
 
     pub fn push(&mut self, instr: Instruct<Int>) {
+        self.push_ref(&instr);
+    }
+
+    pub fn push_ref(&mut self, instr: &Instruct<Int>) {
         match instr {
-            Instruct::Move(val)    => self.push_move(val),
-            Instruct::Add(val)     => self.push_add(val),
-            Instruct::Set(val)     => self.push_set(val),
-            Instruct::Read         => self.push_read(),
-            Instruct::Write        => self.push_write(),
-            Instruct::LoopStart(_) => self.push_loop_start(),
-            Instruct::LoopEnd(_)   => self.push_loop_end(),
-            Instruct::WriteStr(ref val) => self.push_write_str(val)
+            Instruct::Move(val)     => self.push_move(*val),
+            Instruct::Add(val)      => self.push_add(*val),
+            Instruct::Set(val)      => self.push_set(*val),
+            Instruct::Read          => self.push_read(),
+            Instruct::Write         => self.push_write(),
+            Instruct::LoopStart(_)  => self.push_loop_start(),
+            Instruct::LoopEnd(_)    => self.push_loop_end(),
+            Instruct::WriteStr(val) => self.push_write_str(val.to_vec())
         }
-    }
-
-    fn push_val<Val: BFInt>(&mut self, value: Val) {
-        let bytecount = std::mem::size_of::<Val>();
-        for index in (0..=bytecount * 8 - 8).rev().step_by(8) {
-            let byte: u8 = (value >> index).get_least_byte();
-            self.bytes.push(byte);
-        }
-    }
-
-    fn set_val<Val: BFInt>(&mut self, mut index: usize, value: Val) {
-        let bytecount = std::mem::size_of::<Val>();
-        for i in (0..=bytecount * 8 - 8).rev().step_by(8) {
-            let byte: u8 = (value >> i).get_least_byte();
-            self.bytes[index] = byte;
-            index += 1;
-        }
-    }
-
-    fn push_int(&mut self, value: Int) {
-        self.push_val::<Int>(value);
-    }
-
-    fn push_usize(&mut self, value: usize) {
-        self.push_val::<usize>(value);
-    }
-
-    fn get(&self, mut index: usize) -> Option<(Instruct<Int>, usize)> {
-        if index >= self.bytes.len() {
-            return None;
-        }
-
-        let instr = self.bytes[index];
-        index += 1;
-
-        match instr {
-            self::MOVE => {
-                if let Some((val, index)) = self.get_val::<isize>(index) {
-                    return Some((Instruct::<Int>::Move(val), index));
-                }
-            },
-            self::ADD => {
-                if let Some((val, index)) = self.get_int(index) {
-                    return Some((Instruct::<Int>::Add(val), index));
-                }
-            },
-            self::SET => {
-                if let Some((val, index)) = self.get_int(index) {
-                    return Some((Instruct::<Int>::Set(val), index));
-                }
-            },
-            self::READ => {
-                return Some((Instruct::<Int>::Read, index));
-            },
-            self::WRITE => {
-                return Some((Instruct::<Int>::Write, index));
-            },
-            self::LOOP_START => {
-                if let Some((val, index)) = self.get_val::<usize>(index) {
-                    return Some((Instruct::<Int>::LoopStart(val), index));
-                }
-            },
-            self::LOOP_END => {
-                if let Some((val, index)) = self.get_val::<usize>(index) {
-                    return Some((Instruct::<Int>::LoopEnd(val), index));
-                }
-            },
-            self::WRITE_STR => {
-                if let Some((len, index)) = self.get_usize(index) {
-                    let end_index = index + len;
-                    if end_index > self.bytes.len() {
-                        return None;
-                    }
-                    let data = self.bytes[index..end_index].to_vec();
-                    return Some((Instruct::<Int>::WriteStr(data), end_index));
-                }
-            },
-            _ => {}
-        }
-
-        return None;
-    }
-
-    fn get_val<Val: BFInt>(&self, index: usize) -> Option<(Val, usize)> {
-        let bytecount = std::mem::size_of::<Val>();
-        let end_index = index + bytecount;
-        if end_index > self.bytes.len() {
-            return None;
-        }
-
-        let mut value = Val::zero();
-        for i in index..end_index {
-            value = value.wrapping_shl(8) | Val::from_byte(self.bytes[i]);
-        }
-
-        return Some((value, end_index));
-    }
-
-    #[inline]
-    fn get_int(&self, index: usize) -> Option<(Int, usize)> {
-        self.get_val::<Int>(index)
-    }
-
-    #[inline]
-    fn get_usize(&self, index: usize) -> Option<(usize, usize)> {
-        self.get_val::<usize>(index)
     }
 
     pub fn optimize_fold(&self) -> Self {
         let mut code = Self::new();
-        let mut it = self.iter();
+        let mut index = 0usize;
 
         loop {
-            if let Some(instr) = it.next() {
-                match instr {
+            if let Some(instr) = self.code.get(index) {
+                index += 1;
+                match *instr {
                     Instruct::Move(val1) => {
                         let mut val = val1;
-                        while let Some(Instruct::Move(val2)) = it.peek() {
-                            it.next();
-                            val += val2;
+                        while let Some(Instruct::Move(val2)) = self.code.get(index) {
+                            index += 1;
+                            val += *val2;
                         }
                         code.push_move(val);
                     },
                     Instruct::Add(val1) => {
                         let mut val = val1;
-                        while let Some(Instruct::Add(val2)) = it.peek() {
-                            it.next();
-                            val = val + val2;
+                        while let Some(Instruct::Add(val2)) = self.code.get(index) {
+                            index += 1;
+                            val = val + *val2;
                         }
                         code.push_add(val);
                     },
                     Instruct::Set(val1) => {
                         let mut val = val1;
-                        while let Some(Instruct::Set(val2)) = it.peek() {
-                            it.next();
-                            val = val2;
+                        while let Some(Instruct::Set(val2)) = self.code.get(index) {
+                            index += 1;
+                            val = *val2;
                         }
                         code.push_set(val);
                     },
-                    _ => code.push(instr)
+                    _ => code.push_ref(instr)
                 }
             } else {
                 break;
@@ -523,26 +398,28 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
 
     pub fn optimize_set(&self) -> Self {
         let mut code = Self::new();
-        let mut it = self.iter();
+        let mut index = 0usize;
 
         loop {
-            match it.peek4() {
-                Some((Instruct::LoopStart(_), Instruct::Add(_), Instruct::LoopEnd(_), Instruct::Add(val))) => {
-                    it.next(); it.next(); it.next(); it.next();
-                    code.push_set(val);
+            match (self.code.get(index), self.code.get(index + 1), self.code.get(index + 2), self.code.get(index + 3)) {
+                (Some(Instruct::LoopStart(_)), Some(Instruct::Add(_)), Some(Instruct::LoopEnd(_)), Some(Instruct::Add(val))) => {
+                    index += 4;
+                    code.push_set(*val);
                     continue;
                 },
                 _ => {}
             }
 
-            if let Some((Instruct::LoopStart(_), Instruct::Add(_), Instruct::LoopEnd(_))) = it.peek3() {
-                it.next(); it.next(); it.next();
+            if let (Some(Instruct::LoopStart(_)), Some(Instruct::Add(_)), Some(Instruct::LoopEnd(_))) =
+                    (self.code.get(index), self.code.get(index + 1), self.code.get(index + 2)) {
+                index += 3;
                 code.push_set(Int::zero());
                 continue;
             }
 
-            if let Some(instr) = it.next() {
-                code.push(instr);
+            if let Some(instr) = self.code.get(index) {
+                index += 1;
+                code.push_ref(instr);
             } else {
                 break;
             }
@@ -551,48 +428,52 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
         return code;
     }
 
-    fn optimize_write_str(&self, it: &mut BytecodeIter<Int>, data: &mut Vec<u8>) {
-        let mut last_val = if data.len() > 0 { data[data.len() - 1] } else { 0u8 };
+    fn optimize_write_str(&self, mut index: usize, data: &mut Vec<u8>) -> usize {
+        let mut last_val = data[data.len() - 1];
         loop {
-            if let Some((Instruct::Set(val), Instruct::Write)) = it.peek2() {
-                it.next(); it.next();
+            if let (Some(Instruct::Set(val)), Some(Instruct::Write)) = (self.code.get(index), self.code.get(index + 1)) {
+                index += 2;
                 last_val = val.get_least_byte();
                 data.push(last_val);
-            } else if let Some(Instruct::Write) = it.peek() {
-                it.next();
+            } else if let Some(Instruct::Write) = self.code.get(index) {
+                index += 1;
                 data.push(last_val);
-            } else if let Some(Instruct::WriteStr(data2)) = it.peek() {
-                it.next();
+            } else if let Some(Instruct::WriteStr(data2)) = self.code.get(index) {
+                index += 1;
                 data.extend(data2);
             } else {
                 break;
             }
         }
+        return index;
     }
 
     pub fn optimize_write(&self) -> Self {
         let mut code = Self::new();
-        let mut it = self.iter();
+        let mut index = 0usize;
 
         loop {
-            match it.peek2() {
-                Some((Instruct::Set(val), Instruct::Write)) => {
-                    it.next(); it.next();
+            match (self.code.get(index), self.code.get(index + 1)) {
+                (Some(Instruct::Set(val)), Some(Instruct::Write)) => {
+                    index += 2;
                     let mut data = vec![val.get_least_byte()];
-                    self.optimize_write_str(&mut it, &mut data);
-                    code.push_write_str(&data);
+                    index = self.optimize_write_str(index, &mut data);
+                    code.push_write_str(data);
                     continue;
                 },
                 _ => {}
             }
 
-            if let Some(instr) = it.next() {
+            if let Some(instr) = self.code.get(index) {
+                index += 1;
                 if let Instruct::WriteStr(data) = instr {
-                    let mut data = data;
-                    self.optimize_write_str(&mut it, &mut data);
-                    code.push_write_str(&data);
+                    if data.len() > 0 {
+                        let mut data = data.to_vec();
+                        index = self.optimize_write_str(index, &mut data);
+                        code.push_write_str(data);
+                    }
                 } else {
-                    code.push(instr);
+                    code.push_ref(instr);
                 }
             } else {
                 break;
@@ -609,20 +490,20 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
         let mut pc  = 0usize;
 
         loop {
-            if let Some((instr, pc2)) = self.get(pc) {
-                match instr {
+            if let Some(instr) = self.code.get(pc) {
+                match *instr {
                     Instruct::Move(off) => {
-                        pc = pc2;
+                        pc += 1;
                         if off == std::isize::MIN || (ptr as isize) < -off {
                             // XXX: what to do when pointer < 0?
-                            code.push(instr);
+                            code.push_move(off);
                             break;
                         }
                         ptr = ((ptr as isize) + off) as usize;
                     },
 
                     Instruct::Add(val) => {
-                        pc = pc2;
+                        pc += 1;
                         if ptr >= mem.len() {
                             mem.resize(ptr + 1, Int::zero());
                         }
@@ -630,7 +511,7 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
                     },
 
                     Instruct::Set(val) => {
-                        pc = pc2;
+                        pc += 1;
                         if ptr >= mem.len() {
                             mem.resize(ptr + 1, Int::zero());
                         }
@@ -638,25 +519,25 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
                     },
 
                     Instruct::Read => {
-                        pc = pc2;
-                        code.push(instr);
+                        pc += 1;
+                        code.push_read();
                         break;
                     },
 
                     Instruct::Write => {
-                        pc = pc2;
+                        pc += 1;
                         if ptr >= mem.len() {
                             mem.resize(ptr + 1, Int::zero());
                         }
-                        let data = [mem[ptr].get_least_byte()];
+                        let data = vec![mem[ptr].get_least_byte()];
                         std::io::stdout().write_all(&data); // DEBUG
-                        code.push_write_str(&data);
+                        code.push_write_str(data);
                     },
 
                     Instruct::WriteStr(ref data) => {
-                        pc = pc2;
+                        pc += 1;
                         std::io::stdout().write_all(data); // DEBUG
-                        code.push_write_str(data);
+                        code.push_write_str(data.to_vec());
                     },
 
                     Instruct::LoopStart(pc_false) => {
@@ -666,12 +547,12 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
                         if mem[ptr] == Int::zero() {
                             pc = pc_false;
                         } else {
-                            pc = pc2;
+                            pc += 1;
                         }
                     },
 
-                    Instruct::LoopEnd(pc2) => {
-                        pc = pc2;
+                    Instruct::LoopEnd(pc_loop_start) => {
+                        pc = pc_loop_start;
                     }
                 }
             } else {
@@ -679,7 +560,7 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
             }
         }
 
-        if pc < self.bytes.len() {
+        if pc < self.code.len() {
             let mut current_ptr = ptr;
             for (target_ptr, val) in mem.iter().enumerate() {
                 if *val != Int::zero() {
@@ -697,9 +578,9 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
                 code.push_move(off);
             }
 
-            while let Some((instr, pc2)) = self.get(pc) {
-                code.push(instr);
-                pc = pc2;
+            while let Some(instr) = self.code.get(pc) {
+                code.push_ref(instr);
+                pc += 1;
             }
         }
 
@@ -725,15 +606,15 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
         let mut pc  = 0usize;
 
         loop {
-            if let Some((instr, pc_next)) = self.get(pc) {
-                match instr {
+            if let Some(instr) = self.code.get(pc) {
+                match *instr {
                     Instruct::Move(off) => {
-                        pc = pc_next;
+                        pc += 1;
                         ptr = ((ptr as isize) + off) as usize;
                     },
 
                     Instruct::Add(val) => {
-                        pc = pc_next;
+                        pc += 1;
                         if ptr >= mem.len() {
                             mem.resize(ptr + 1, Int::zero());
                         }
@@ -741,7 +622,7 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
                     },
 
                     Instruct::Set(val) => {
-                        pc = pc_next;
+                        pc += 1;
                         if ptr >= mem.len() {
                             mem.resize(ptr + 1, Int::zero());
                         }
@@ -749,7 +630,7 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
                     },
 
                     Instruct::Read => {
-                        pc = pc_next;
+                        pc += 1;
                         let mut data = [0u8];
                         let count = std::io::stdin().read(&mut data)?;
                         if ptr >= mem.len() {
@@ -763,7 +644,7 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
                     },
 
                     Instruct::Write => {
-                        pc = pc_next;
+                        pc += 1;
                         if ptr >= mem.len() {
                             mem.resize(ptr + 1, Int::zero());
                         }
@@ -772,7 +653,7 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
                     },
 
                     Instruct::WriteStr(ref data) => {
-                        pc = pc_next;
+                        pc += 1;
                         std::io::stdout().write_all(data)?;
                     },
 
@@ -783,12 +664,12 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
                         if mem[ptr] == Int::zero() {
                             pc = pc_false;
                         } else {
-                            pc = pc_next;
+                            pc += 1;
                         }
                     },
 
-                    Instruct::LoopEnd(pc_start) => {
-                        pc = pc_start;
+                    Instruct::LoopEnd(pc_loop_start) => {
+                        pc = pc_loop_start;
                     }
                 }
             } else {
@@ -799,13 +680,9 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
         Ok(())
     }
 
-    pub fn dump(&self, out: &mut Write) -> std::io::Result<()> {
-        out.write_all(self.bytes.as_slice())
-    }
-
     pub fn debug_code(&self, out: &mut Write) -> std::io::Result<()> {
         let mut nesting: usize = 0;
-        for instr in self.iter() {
+        for instr in self.code.iter() {
 
             match instr {
                 Instruct::Move(val) => {
@@ -856,131 +733,6 @@ impl<Int: BFInt + Signed> Bytecode<Int> {
     }
 }
 
-impl<'a, Int: BFInt + Signed> BytecodeIter<'a, Int> {
-    fn read_val<Val: BFInt>(&mut self) -> Option<Val> {
-        let bytecount = std::mem::size_of::<Val>();
-        if self.index + bytecount > self.code.bytes.len() {
-            return None;
-        }
-
-        let mut value = Val::zero();
-        for index in self.index..(self.index + bytecount) {
-            value = value.wrapping_shl(8) | Val::from_byte(self.code.bytes[index]);
-        }
-        self.index += bytecount;
-
-        return Some(value);
-    }
-
-    #[inline]
-    fn read_int(&mut self) -> Option<Int> {
-        self.read_val::<Int>()
-    }
-
-    #[inline]
-    fn read_usize(&mut self) -> Option<usize> {
-        self.read_val::<usize>()
-    }
-
-    fn peek(&self) -> Option<Instruct<Int>> {
-        if let Some((instr, _)) = self.code.get(self.index) {
-            return Some(instr);
-        }
-        None
-    }
-
-    fn peek2(&self) -> Option<(Instruct<Int>, Instruct<Int>)> {
-        if let Some((instr1, index)) = self.code.get(self.index) {
-            if let Some((instr2, _)) = self.code.get(index) {
-                return Some((instr1, instr2));
-            }
-        }
-
-        None
-    }
-
-    fn peek3(&self) -> Option<(Instruct<Int>, Instruct<Int>, Instruct<Int>)> {
-        if let Some((instr1, index)) = self.code.get(self.index) {
-            if let Some((instr2, index)) = self.code.get(index) {
-                if let Some((instr3, _)) = self.code.get(index) {
-                    return Some((instr1, instr2, instr3));
-                }
-            }
-        }
-
-        None
-    }
-
-    fn peek4(&self) -> Option<(Instruct<Int>, Instruct<Int>, Instruct<Int>, Instruct<Int>)> {
-        if let Some((instr1, index)) = self.code.get(self.index) {
-            if let Some((instr2, index)) = self.code.get(index) {
-                if let Some((instr3, index)) = self.code.get(index) {
-                    if let Some((instr4, _)) = self.code.get(index) {
-                        return Some((instr1, instr2, instr3, instr4));
-                    }
-                }
-            }
-        }
-
-        None
-    }
-}
-
-impl<'a, Int: BFInt + Signed> Iterator for BytecodeIter<'a, Int> {
-    type Item = Instruct<Int>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.code.bytes.len() {
-            return None;
-        }
-
-        let instr = self.code.bytes[self.index];
-        self.index += 1;
-
-        match instr {
-            self::MOVE => {
-                let val = self.read_val::<isize>().expect(&format!("unexpected end of bytecode at index {}", self.index));
-                return Some(Instruct::<Int>::Move(val));
-            },
-            self::ADD => {
-                let val = self.read_int().expect(&format!("unexpected end of bytecode at index {}", self.index));
-                return Some(Instruct::<Int>::Add(val));
-            },
-            self::SET => {
-                let val = self.read_int().expect(&format!("unexpected end of bytecode at index {}", self.index));
-                return Some(Instruct::<Int>::Set(val));
-            },
-            self::READ => {
-                return Some(Instruct::<Int>::Read);
-            },
-            self::WRITE => {
-                return Some(Instruct::<Int>::Write);
-            },
-            self::LOOP_START => {
-                let val = self.read_val::<usize>().expect(&format!("unexpected end of bytecode at index {}", self.index));
-                return Some(Instruct::<Int>::LoopStart(val));
-            },
-            self::LOOP_END => {
-                let val = self.read_val::<usize>().expect(&format!("unexpected end of bytecode at index {}", self.index));
-                return Some(Instruct::<Int>::LoopEnd(val));
-            },
-            self::WRITE_STR => {
-                let len = self.read_usize().expect(&format!("unexpected end of bytecode at index {}", self.index));
-                let end_index = self.index + len;
-                if end_index > self.code.bytes.len() {
-                    panic!(format!("unexpected end of bytecode at index {}", self.index));
-                }
-                let data = self.code.bytes[self.index..end_index].to_vec();
-                self.index = end_index;
-                return Some(Instruct::<Int>::WriteStr(data));
-            },
-            _ => {
-                panic!(format!("illegal instruction {} at index {}", instr, self.index));
-            }
-        }
-    }
-}
-
 fn indent(out: &mut Write, nesting: usize) -> std::io::Result<()> {
     for _ in 0..nesting {
         out.write_all(b"    ")?;
@@ -988,7 +740,7 @@ fn indent(out: &mut Write, nesting: usize) -> std::io::Result<()> {
     Ok(())
 }
 
-fn generate_c_code<Int: BFInt + Signed>(code: &Bytecode<Int>, out: &mut Write) -> std::io::Result<()> {
+fn generate_c_code<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, out: &mut Write) -> std::io::Result<()> {
     write!(out, r##"
 #include <stdio.h>
 #include <sys/mman.h>
@@ -1073,11 +825,11 @@ int main() {{
                         },
 
                         c if c >= 32 && c <= 126 => {
-                            out.write_all(&[c]);
+                            out.write_all(&[c])?;
                         },
 
                         _ => {
-                            write!(out, "\\x{:02x}", c);
+                            write!(out, "\\x{:02x}", c)?;
                         }
                     }
                 }
@@ -1099,7 +851,7 @@ fn main() -> std::result::Result<(), Error> {
         panic!("Usage: bfc <input-file>");
     }
     let code = std::fs::read_to_string(&args[1])?;
-    let code = Bytecode::<i64>::from_str(&code)?;
+    let code = Brainfuck::<i64>::from_str(&code)?;
     let code = code.optimize();
     //generate_c_code(code, file)
 
