@@ -68,7 +68,7 @@ optimization features:
             .takes_value(false))
 
         .subcommand(SubCommand::with_name("compile")
-            .arg(Arg::with_name("output-format")
+            .arg(Arg::with_name("format")
                 .help("\
 output formats:
  * C ........... C source

@@ -143,7 +143,7 @@ pub fn generate<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, out: &mut
             max_move = -min_move;
         }
 
-        let pagesize = ((max_move / 4096) + 1) * 4096;
+        let pagesize = ((max_move as usize * std::mem::size_of::<Int>() / 4096) + 1) * 4096;
 
         write!(out, r##"#define _GNU_SOURCE
 
@@ -167,7 +167,11 @@ void memmng(int signum) {
 
     if (!(((void*)ptr >= (void*)mem && (void*)ptr < (void*)mem + PAGESIZE) || ((void*)ptr >= (void*)mem + (mem_size - PAGESIZE) && (void*)ptr < (void*)mem + mem_size))) {
         // Some other segmantation fault! This is a compiler error!
-        fprintf(stderr, "unhandeled segmantation fault\n");
+        fprintf(stderr,
+            "unhandeled segmantation fault: pagesize = %zu, ptr = 0x%zX (offset %zu), mem = 0x%zX ... 0x%zX (size %zu)\n",
+            (size_t)PAGESIZE,
+            (uintptr_t)(void*)ptr, (uintptr_t)((void*)ptr - (void*)mem),
+            (uintptr_t)(void*)mem, (uintptr_t)((void*)mem + mem_size), mem_size);
         fflush(stderr);
         abort();
     }
