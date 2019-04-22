@@ -308,8 +308,19 @@ int main() {{
     Ok(())
 }
 
-pub fn compile_c(source_file: &str, binary_file: &str) -> std::io::Result<()> {
-    let status = std::process::Command::new("gcc")
+pub fn compile_c(source_file: &str, binary_file: &str, debug: bool, optlevel: u32) -> std::io::Result<()> {
+    let mut cmd = std::process::Command::new("gcc");
+    let cmd = if debug {
+        cmd.arg("-g")
+    } else {
+        &mut cmd
+    };
+    let cmd = if optlevel > 0 {
+        cmd.arg(format!("-O{}", optlevel))
+    } else {
+        cmd
+    };
+    let status = cmd
         .arg("-Wall")
         .arg("-Wextra")
         .arg("-std=gnu11")
@@ -332,13 +343,13 @@ pub fn compile_c(source_file: &str, binary_file: &str) -> std::io::Result<()> {
     return Ok(());
 }
 
-pub fn compile<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_file: &str, keep_c_source: bool) -> std::io::Result<()> {
-    let source_file = format!("{}.rust-bfc.{}.c", binary_file, std::process::id());
+pub fn compile<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_file: &str, debug: bool, optlevel: u32, keep_c_source: bool) -> std::io::Result<()> {
+    let source_file = format!("{}.c", binary_file);
     {
         let mut file = File::create(&source_file)?;
         generate(code, &mut file)?;
     }
-    compile_c(&source_file, &binary_file)?;
+    compile_c(&source_file, &binary_file, debug, optlevel)?;
     if !keep_c_source {
         std::fs::remove_file(&source_file)?;
     }

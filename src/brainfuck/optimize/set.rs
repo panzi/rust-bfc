@@ -24,7 +24,7 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
 
         if let Some(instr) = code.code.get(index) {
             index += 1;
-            opt_code.push_ref(instr);
+            opt_code.push(instr);
         } else {
             break;
         }

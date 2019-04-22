@@ -7,6 +7,7 @@ pub trait BrainfuckInteger: PrimInt + WrappingShl + WrappingAdd + std::fmt::Debu
     fn c_type() -> &'static str;
     fn get_least_byte(self) -> u8;
     fn from_byte(value: u8) -> Self;
+    fn wrapping_usize(self) -> usize;
 }
 
 impl BrainfuckInteger for u8 {
@@ -21,7 +22,11 @@ impl BrainfuckInteger for u8 {
     }
 
     fn c_type() -> &'static str {
-        return "uint8_t";
+        "uint8_t"
+    }
+
+    fn wrapping_usize(self) -> usize {
+        self as usize
     }
 }
 
@@ -37,7 +42,11 @@ impl BrainfuckInteger for i8 {
     }
 
     fn c_type() -> &'static str {
-        return "int8_t";
+        "int8_t"
+    }
+
+    fn wrapping_usize(self) -> usize {
+        self as usize
     }
 }
 
@@ -53,7 +62,11 @@ impl BrainfuckInteger for u16 {
     }
 
     fn c_type() -> &'static str {
-        return "uint16_t";
+        "uint16_t"
+    }
+
+    fn wrapping_usize(self) -> usize {
+        self as usize
     }
 }
 
@@ -69,7 +82,11 @@ impl BrainfuckInteger for i16 {
     }
 
     fn c_type() -> &'static str {
-        return "int16_t";
+        "int16_t"
+    }
+
+    fn wrapping_usize(self) -> usize {
+        self as usize
     }
 }
 
@@ -85,7 +102,11 @@ impl BrainfuckInteger for u32 {
     }
 
     fn c_type() -> &'static str {
-        return "uint32_t";
+        "uint32_t"
+    }
+
+    fn wrapping_usize(self) -> usize {
+        self as usize
     }
 }
 
@@ -101,7 +122,11 @@ impl BrainfuckInteger for i32 {
     }
 
     fn c_type() -> &'static str {
-        return "int32_t";
+        "int32_t"
+    }
+
+    fn wrapping_usize(self) -> usize {
+        self as usize
     }
 }
 
@@ -117,7 +142,11 @@ impl BrainfuckInteger for u64 {
     }
 
     fn c_type() -> &'static str {
-        return "uint64_t";
+        "uint64_t"
+    }
+
+    fn wrapping_usize(self) -> usize {
+        self as usize
     }
 }
 
@@ -133,7 +162,11 @@ impl BrainfuckInteger for i64 {
     }
 
     fn c_type() -> &'static str {
-        return "int64_t";
+        "int64_t"
+    }
+
+    fn wrapping_usize(self) -> usize {
+        self as usize
     }
 }
 
@@ -149,7 +182,11 @@ impl BrainfuckInteger for isize {
     }
 
     fn c_type() -> &'static str {
-        return "ssize_t";
+        "ssize_t"
+    }
+
+    fn wrapping_usize(self) -> usize {
+        self as usize
     }
 }
 
@@ -165,6 +202,10 @@ impl BrainfuckInteger for usize {
     }
 
     fn c_type() -> &'static str {
-        return "size_t";
+        "size_t"
+    }
+
+    fn wrapping_usize(self) -> usize {
+        self as usize
     }
 }

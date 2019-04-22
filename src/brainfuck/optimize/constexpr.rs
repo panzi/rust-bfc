@@ -103,7 +103,7 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
         }
 
         while let Some(instr) = code.code.get(pc) {
-            opt_code.push_ref(instr);
+            opt_code.push(instr);
             pc += 1;
         }
     }

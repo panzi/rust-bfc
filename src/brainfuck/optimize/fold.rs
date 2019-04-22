@@ -33,7 +33,7 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
                     }
                     opt_code.push_set(val);
                 },
-                _ => opt_code.push_ref(instr)
+                _ => opt_code.push(instr)
             }
         } else {
             break;

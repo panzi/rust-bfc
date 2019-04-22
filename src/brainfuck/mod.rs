@@ -43,6 +43,11 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
         }
     }
 
+    pub fn from_file(filename: &str) -> std::result::Result<Self, Error> {
+        let code = std::fs::read_to_string(filename)?;
+        Brainfuck::<Int>::from_str(&code)
+    }
+
     pub fn from_str(input: &str) -> std::result::Result<Self, Error> {
         let mut code = Self::new();
         code.parse(input)?;
@@ -152,11 +157,7 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
         self.code.push(Instruct::WriteStr(val));
     }
 
-    pub fn push(&mut self, instr: Instruct<Int>) {
-        self.push_ref(&instr);
-    }
-
-    pub fn push_ref(&mut self, instr: &Instruct<Int>) {
+    pub fn push(&mut self, instr: &Instruct<Int>) {
         match instr {
             Instruct::Move(val)     => self.push_move(*val),
             Instruct::Add(val)      => self.push_add(*val),
@@ -176,11 +177,12 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
         if options.fold  { code = optimize::fold(&code); }
         if options.constexpr {
             code = optimize::constexpr(&code, options.constexpr_echo)?;
+
+            if options.fold  { code = optimize::fold(&code); }
+            if options.set   { code = optimize::set(&code); }
+            if options.write { code = optimize::write(&code); }
+            if options.fold  { code = optimize::fold(&code); }
         }
-        if options.fold  { code = optimize::fold(&code); }
-        if options.set   { code = optimize::set(&code); }
-        if options.write { code = optimize::write(&code); }
-        if options.fold  { code = optimize::fold(&code); }
         return Ok(code);
     }
 
@@ -264,10 +266,9 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
         Ok(())
     }
 
-    pub fn debug_code(&self, out: &mut Write) -> std::io::Result<()> {
+    pub fn write_debug(&self, out: &mut Write) -> std::io::Result<()> {
         let mut nesting: usize = 0;
         for instr in self.code.iter() {
-
             match instr {
                 Instruct::Move(val) => {
                     indent(out, nesting)?;
@@ -315,4 +316,69 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
 
         Ok(())
     }
+
+    pub fn write_bf(&self, out: &mut Write) -> std::io::Result<()> {
+        for instr in self.code.iter() {
+            match instr {
+                Instruct::Move(val) => {
+                    if *val > 0 {
+                        print_repeat(out, b">", *val as usize)?;
+                    } else {
+                        print_repeat(out, b"<", -*val as usize)?;
+                    }
+                }
+
+                Instruct::Add(val) => {
+                    if *val > Int::zero() {
+                        print_repeat(out, b"+", (*val).wrapping_usize())?;
+                    } else {
+                        print_repeat(out, b"-", (-*val).wrapping_usize())?;
+                    }
+                },
+
+                Instruct::Set(val) => {
+                    write!(out, "[-]")?;
+                    if *val > Int::zero() {
+                        print_repeat(out, b"+", (*val).wrapping_usize())?;
+                    } else {
+                        print_repeat(out, b"-", (-*val).wrapping_usize())?;
+                    }
+                },
+
+                Instruct::Read => {
+                    out.write_all(b",")?;
+                },
+
+                Instruct::Write => {
+                    out.write_all(b".")?;
+                },
+
+                Instruct::LoopStart(_) => {
+                    out.write_all(b"[")?;
+                },
+
+                Instruct::LoopEnd(_) => {
+                    out.write_all(b"]")?;
+                },
+
+                Instruct::WriteStr(val) => {
+                    for byte in val.iter() {
+                        out.write_all(b"[-]")?;
+                        print_repeat(out, b"+", *byte as usize)?;
+                        out.write_all(b".")?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn print_repeat(out: &mut Write, bytes: &[u8], count: usize) -> std::io::Result<()> {
+    for _ in 0..count {
+        out.write_all(bytes)?;
+    }
+
+    Ok(())
 }

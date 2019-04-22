@@ -19,11 +19,33 @@ pub struct Options {
 impl std::default::Default for Options {
     fn default() -> Self {
         Options {
+            fold:           false,
+            set:            false,
+            write:          false,
+            constexpr:      false,
+            constexpr_echo: false,
+        }
+    }
+}
+
+impl Options {
+    pub fn all() -> Self {
+        Options {
             fold:           true,
             set:            true,
             write:          true,
             constexpr:      true,
             constexpr_echo: true,
+        }
+    }
+
+    pub fn none() -> Self {
+        Options {
+            fold:           false,
+            set:            false,
+            write:          false,
+            constexpr:      false,
+            constexpr_echo: false,
         }
     }
 }
