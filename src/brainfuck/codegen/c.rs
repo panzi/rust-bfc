@@ -162,6 +162,8 @@ volatile {1}* ptr = NULL;
 "##, pagesize, Int::c_type())?;
 
         out.write_all(r##"
+struct sigaction segv_action;
+
 void memmng(int signum) {
     (void)signum;
 
@@ -183,8 +185,13 @@ void memmng(int signum) {
     }
 
     size_t new_size = mem_size + PAGESIZE;
+    if (mprotect((void*)mem, PAGESIZE, PROT_READ | PROT_WRITE) != 0) {
+        perror("release guard before page protection");
+        abort();
+    }
+
     if (mprotect((void*)mem + (mem_size - PAGESIZE), PAGESIZE, PROT_READ | PROT_WRITE) != 0) {
-        perror("release guard page protection");
+        perror("release guard after page protection");
         abort();
     }
 
@@ -194,12 +201,9 @@ void memmng(int signum) {
         abort();
     }
 
-    if (new_mem != (void*)mem) {
-        // memory was moved. not sure if I need to re-protect?
-        if (mprotect((void*)new_mem, PAGESIZE, PROT_NONE) != 0) {
-            perror("mprotect guard before");
-            abort();
-        }
+    if (mprotect(new_mem, PAGESIZE, PROT_NONE) != 0) {
+        perror("mprotect guard before");
+        abort();
     }
 
     if (mprotect(new_mem + (new_size - PAGESIZE), PAGESIZE, PROT_NONE) != 0) {
@@ -207,17 +211,17 @@ void memmng(int signum) {
         abort();
     }
 
-    if (ptr < mem) {
+    if ((void*)ptr < (void*)mem + PAGESIZE) {
         // memory underflow, move everything to the right
-        memmove(new_mem + PAGESIZE * 2, (void*)mem + PAGESIZE, mem_size - PAGESIZE * 2);
+        memmove(new_mem + PAGESIZE * 2, (void*)new_mem + PAGESIZE, mem_size - PAGESIZE * 2);
         ptr = (void*)ptr + PAGESIZE;
     }
+
+    ptr = new_mem + (uintptr_t)((void*)ptr - (void*)mem);
 
     mem = new_mem;
     mem_size = new_size;
 }
-
-struct sigaction segv_action;
 
 int main() {
     memset(&segv_action, 0, sizeof(struct sigaction));
