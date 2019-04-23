@@ -369,7 +369,9 @@ int main() {
 
         for instr in code.iter() {
             if let Instruct::WriteStr(data) = instr {
-                str_table.insert(data, str_table.len());
+                if data.len() > 1 {
+                    str_table.insert(data, str_table.len());
+                }
             }
         }
 
@@ -454,7 +456,7 @@ brainfuck_main:
 
                 Instruct::Write => {
                     write!(asm, "        mov  edi,  [r12]\n")?;
-                    write!(asm, "        call putchar               ; putchar(*ptr)\n")?;
+                    write!(asm, "        call putchar               ; {:nesting$}putchar(*ptr)\n", "", nesting = nesting)?;
                 },
 
                 Instruct::LoopStart(_) => {
@@ -478,13 +480,18 @@ brainfuck_main:
                 },
 
                 Instruct::WriteStr(ref data) => {
-                    let msg_id = str_table.get(data).unwrap();
+                    if data.len() == 1 {
+                        write!(asm, "        mov  edi, {}\n", data[0])?;
+                        write!(asm, "        call putchar               ; {:nesting$}putchar({})\n", "", data[0], nesting = nesting)?;
+                    } else if data.len() > 0 {
+                        let msg_id = str_table.get(data).unwrap();
 
-                    write!(asm, "        mov  rcx, [rel stdout]\n")?;
-                    write!(asm, "        mov  edx, 1\n")?;
-                    write!(asm, "        mov  esi, {}\n", data.len())?;
-                    write!(asm, "        mov  edi, msg{}\n", msg_id)?;
-                    write!(asm, "        call fwrite                ; {:nesting$}fwrite(msg{}, {}, 1, stdout);\n", "", msg_id, data.len(), nesting = nesting)?;
+                        write!(asm, "        mov  rcx, [rel stdout]\n")?;
+                        write!(asm, "        mov  edx, 1\n")?;
+                        write!(asm, "        mov  esi, {}\n", data.len())?;
+                        write!(asm, "        mov  edi, msg{}\n", msg_id)?;
+                        write!(asm, "        call fwrite                ; {:nesting$}fwrite(msg{}, {}, 1, stdout);\n", "", msg_id, data.len(), nesting = nesting)?;
+                    }
                 },
             }
         }
