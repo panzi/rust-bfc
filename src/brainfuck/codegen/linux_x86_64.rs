@@ -399,7 +399,7 @@ brainfuck_main:
         let int_size = std::mem::size_of::<Int>() as isize;
         let prefix = Int::nasm_prefix();
         nesting = 2;
-        for instr in code.iter() {
+        for (index, instr) in code.iter().enumerate() {
             match *instr {
                 Instruct::Move(off) => {
                     indent(&mut asm, nesting)?;
@@ -434,22 +434,31 @@ brainfuck_main:
                 },
 
                 Instruct::Read => {
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "push r10\n")?;
+                    if index == 0 || !code.code.get(index - 1).unwrap().is_func_call() {
+                        indent(&mut asm, nesting)?;
+                        write!(asm, "push r10\n")?;
+                    }
 
                     indent(&mut asm, nesting)?;
                     write!(asm, "call getchar\n")?;
 
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "pop  r10\n")?;
+                    if index + 1 >= code.code.len() || !code.code.get(index + 1).unwrap().is_func_call() {
+                        indent(&mut asm, nesting)?;
+                        write!(asm, "pop  r10\n")?;
+                    } else {
+                        indent(&mut asm, nesting)?;
+                        write!(asm, "mov  r10, [esp]\n")?;
+                    }
 
                     indent(&mut asm, nesting)?;
                     write!(asm, "mov  {} [r10], eax\n", prefix)?;
                 },
 
                 Instruct::Write => {
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "push r10\n")?;
+                    if index == 0 || !code.code.get(index - 1).unwrap().is_func_call() {
+                        indent(&mut asm, nesting)?;
+                        write!(asm, "push r10\n")?;
+                    }
 
                     indent(&mut asm, nesting)?;
                     write!(asm, "mov  edi, [r10]\n")?;
@@ -457,8 +466,10 @@ brainfuck_main:
                     indent(&mut asm, nesting)?;
                     write!(asm, "call putchar\n")?;
 
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "pop  r10\n")?;
+                    if index + 1 >= code.code.len() || !code.code.get(index + 1).unwrap().is_func_call() {
+                        indent(&mut asm, nesting)?;
+                        write!(asm, "pop  r10\n")?;
+                    }
                 },
 
                 Instruct::LoopStart(_) => {
@@ -491,8 +502,10 @@ brainfuck_main:
                 Instruct::WriteStr(ref data) => {
                     let msg_id = str_table.get(data).unwrap();
 
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "push r10\n")?;
+                    if index == 0 || !code.code.get(index - 1).unwrap().is_func_call() {
+                        indent(&mut asm, nesting)?;
+                        write!(asm, "push r10\n")?;
+                    }
 
                     indent(&mut asm, nesting)?;
                     write!(asm, "mov  rcx, [rel stdout]\n")?;
@@ -509,8 +522,10 @@ brainfuck_main:
                     indent(&mut asm, nesting)?;
                     write!(asm, "call fwrite\n")?;
 
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "pop  r10\n")?;
+                    if index + 1 >= code.code.len() || !code.code.get(index + 1).unwrap().is_func_call() {
+                        indent(&mut asm, nesting)?;
+                        write!(asm, "pop  r10\n")?;
+                    }
                 },
             }
         }
