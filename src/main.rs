@@ -16,23 +16,14 @@ extern crate num_traits;
 extern crate clap;
 use clap::{Arg, App, SubCommand};
 use num_traits::Signed;
+use std::io::Write;
 
 mod brainfuck;
 
 use brainfuck::{Brainfuck, Error, BrainfuckInteger};
 use brainfuck::optimize::Options;
 
-fn usage(program: &str) -> ! {
-    panic!("Usage: {} [options] <input-file>", program);
-}
-
 fn main() -> std::result::Result<(), Error> {
-    let args: Vec<String> = std::env::args().collect();
-    let program = args[0].clone();
-    if args.len() <= 1 {
-        usage(&program);
-    }
-
     let matches = App::new("Brainfuck Compiler")
         .version("1.0")
         .author("Mathias Panzenböck")
@@ -68,11 +59,13 @@ optimization features:
             .takes_value(false))
 
         .subcommand(SubCommand::with_name("compile")
+            .about("compiles a brainfuck program")
+
             .arg(Arg::with_name("format")
                 .help("\
 output formats:
  * source....... C and/or assembler source
- * binary ...... compiled binary (default)
+ * binary ...... x86 64 Linux binary (default)
  * brainfuck ... brainfuck source
  * debug ....... text representation of internal bytecode
 ")
@@ -104,7 +97,7 @@ output formats:
                 .takes_value(true)))
 
         .subcommand(SubCommand::with_name("exec")
-            .help("execute program using interpreter"))
+            .about("executes a brainfuck program using an interpreter"))
 
         .arg(Arg::with_name("INPUT")
             .required(true))
@@ -184,7 +177,14 @@ output formats:
                 _  => panic!("illegal integer size: {}", int_size)
             }
         },
-        (cmd, _) => panic!("illegal command: {}", cmd),
+        ("", _) => {
+            write!(std::io::stderr(), "A sub-command is required!\n")?;
+            std::process::exit(1);
+        },
+        (cmd, _) => {
+            write!(std::io::stderr(), "Illegal sub-command: {}\n", cmd)?;
+            std::process::exit(1);
+        },
     }
 
     Ok(())
