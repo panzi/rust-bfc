@@ -15,9 +15,10 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
                 Instruct::Move(off) => {
                     pc += 1;
                     if off == std::isize::MIN || (ptr as isize) < -off {
-                        // XXX: what to do when pointer < 0?
-                        opt_code.push_move(off);
-                        break;
+                        let diff = (-(ptr as isize) - off) as usize;
+                        let chunk = vec![Int::zero(); diff];
+                        mem.splice(..0, chunk);
+                        ptr += diff;
                     }
                     ptr = ((ptr as isize) + off) as usize;
                 },

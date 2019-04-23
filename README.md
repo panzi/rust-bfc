@@ -18,6 +18,8 @@ It supports several optimizations. If the brainfuck program doesn't depend on
 input it can be executed during compilation and the resulting program will
 just be a single `fwrite()` and will not contain the memory management runtime.
 
+It calls `gcc` and `nasm` to compile the generated code.
+
 I haven't done any x86 (64 or 32 bit) before, so that part was fun. I hope I
 did it all right.
 
