@@ -453,8 +453,8 @@ brainfuck_main:
                 },
 
                 Instruct::Write => {
-                    write!(asm, "        mov  edi, [r12]\n")?;
-                    write!(asm, "        call putchar ; putchar(*ptr)\n")?;
+                    write!(asm, "        mov  edi,  [r12]\n")?;
+                    write!(asm, "        call putchar               ; putchar(*ptr)\n")?;
                 },
 
                 Instruct::LoopStart(_) => {
@@ -484,7 +484,7 @@ brainfuck_main:
                     write!(asm, "        mov  edx, 1\n")?;
                     write!(asm, "        mov  esi, {}\n", data.len())?;
                     write!(asm, "        mov  edi, msg{}\n", msg_id)?;
-                    write!(asm, "        call fwrite             ; {:nesting$}fwrite(msg{}, {}, 1, stdout);\n", "", msg_id, data.len(), nesting = nesting)?;
+                    write!(asm, "        call fwrite                ; {:nesting$}fwrite(msg{}, {}, 1, stdout);\n", "", msg_id, data.len(), nesting = nesting)?;
                 },
             }
         }
