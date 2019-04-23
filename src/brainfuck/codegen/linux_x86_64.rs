@@ -72,7 +72,9 @@ fn generate_asm_str(out: &mut Write, name: &str, data: &[u8]) -> std::io::Result
         }
 
         if quote {
-            out.write_all(b"\"")?;
+            out.write_all(b"\"\n")?;
+        } else {
+            out.write_all(b"\n")?;
         }
     } else {
         out.write_all(b"\"\"\n")?;
@@ -378,23 +380,21 @@ int main() {
             generate_asm_str(&mut asm, &name, msg)?;
         }
 
-        asm.write_all(br##"
-        section .text
+        write!(asm,
+"        section .text
         extern stdout
         extern fwrite
         extern putchar
         extern getchar
         extern mem
         global brainfuck_main
-brainfuck_main:"##)?;
-
-        write!(asm, r##"
+brainfuck_main:
         push rbp
         mov  rbp, rsp
         push r10
         mov  r10, [rel mem]
         add  r10, qword {}
-"##, pagesize)?;
+", pagesize)?;
 
         let int_size = std::mem::size_of::<Int>() as isize;
         let prefix = Int::nasm_prefix();
@@ -515,12 +515,12 @@ brainfuck_main:"##)?;
             }
         }
 
-        write!(asm, r##"
-        pop  r10
+        asm.write_all(
+b"        pop  r10
         mov  rsp, rbp
         pop  rbp
         ret
-"##)?;
+")?;
 
     } else {
         let c_filename = format!("{}.c", binary_file);
