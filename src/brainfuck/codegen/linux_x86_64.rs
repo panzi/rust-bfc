@@ -397,8 +397,8 @@ brainfuck_main:
         mov  rbp, rsp
         push r12
         mov  qword  r12 , [rel mem]
-        add  qword  r12 , {:8} ; ptr = mem + PAGESIZE;
-", pagesize)?;
+        add  qword  r12 , {:8} ; {}* ptr = (void*)mem + PAGESIZE;
+", pagesize, Int::c_type())?;
 
         let int_size = std::mem::size_of::<Int>() as isize;
         let prefix = match int_size {
@@ -418,10 +418,10 @@ brainfuck_main:
                         write!(asm, "        dec  qword r12             ; {:nesting$}ptr --;\n", "", nesting = nesting)?;
                     } else if off > 0 {
                         let val = off * int_size;
-                        write!(asm, "        add  qword  r12 , {:8} ; {:nesting$}ptr  += {};\n", val, "", val, nesting = nesting)?;
+                        write!(asm, "        add  qword  r12 , {:8} ; {:nesting$}ptr  += {};\n", val, "", off, nesting = nesting)?;
                     } else if off != 0 {
                         let val = -off * int_size;
-                        write!(asm, "        sub  qword  r12 , {:8} ; {:nesting$}ptr  -= {};\n", val, "", val, nesting = nesting)?;
+                        write!(asm, "        sub  qword  r12 , {:8} ; {:nesting$}ptr  -= {};\n", val, "", -off, nesting = nesting)?;
                     }
                 },
 
