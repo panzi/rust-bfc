@@ -198,9 +198,9 @@ fn compile<Int: BrainfuckInteger + Signed>(
 
     match format {
         "source"    => {
-            brainfuck::codegen::c::generate(&code, output)?;
+            brainfuck::codegen::linux_x86_64::generate(&code, output)?;
         },
-        "binary"    => brainfuck::codegen::c::compile(&code, output, debug, c_opt_level, keep_source)?,
+        "binary"    => brainfuck::codegen::linux_x86_64::compile(&code, output, debug, c_opt_level, keep_source)?,
         "brainfuck" => {
             let mut out = std::fs::File::create(output)?;
             code.write_bf(&mut out)?;
