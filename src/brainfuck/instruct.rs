@@ -37,4 +37,11 @@ impl<Int: BrainfuckInteger + Signed> Instruct<Int> {
             _ => false
         }
     }
+
+    pub fn is_write(&self) -> bool {
+        match self {
+            Instruct::Write => true,
+            _ => false
+        }
+    }
 }

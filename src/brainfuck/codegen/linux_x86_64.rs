@@ -469,6 +469,9 @@ brainfuck_main:
                     if index + 1 >= code.code.len() || !code.code.get(index + 1).unwrap().is_func_call() {
                         indent(&mut asm, nesting)?;
                         write!(asm, "pop  r10\n")?;
+                    } else if code.code.get(index + 1).unwrap().is_write() {
+                        indent(&mut asm, nesting)?;
+                        write!(asm, "mov  r10, [esp]\n")?;
                     }
                 },
 
@@ -525,6 +528,9 @@ brainfuck_main:
                     if index + 1 >= code.code.len() || !code.code.get(index + 1).unwrap().is_func_call() {
                         indent(&mut asm, nesting)?;
                         write!(asm, "pop  r10\n")?;
+                    } else if code.code.get(index + 1).unwrap().is_write() {
+                        indent(&mut asm, nesting)?;
+                        write!(asm, "mov  r10, [esp]\n")?;
                     }
                 },
             }
