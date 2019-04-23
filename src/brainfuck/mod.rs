@@ -196,6 +196,12 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
                 match *instr {
                     Instruct::Move(off) => {
                         pc += 1;
+                        if off == std::isize::MIN || (ptr as isize) < -off {
+                            let diff = (-(ptr as isize) - off) as usize;
+                            let chunk = vec![Int::zero(); diff];
+                            mem.splice(..0, chunk);
+                            ptr += diff;
+                        }
                         ptr = ((ptr as isize) + off) as usize;
                     },
 
