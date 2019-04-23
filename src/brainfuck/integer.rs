@@ -8,6 +8,8 @@ pub trait BrainfuckInteger: PrimInt + WrappingShl + WrappingAdd + std::fmt::Debu
     fn get_least_byte(self) -> u8;
     fn from_byte(value: u8) -> Self;
     fn wrapping_usize(self) -> usize;
+    fn i64(self) -> i64;
+    fn nasm_prefix() -> &'static str;
 }
 
 impl BrainfuckInteger for u8 {
@@ -27,6 +29,14 @@ impl BrainfuckInteger for u8 {
 
     fn wrapping_usize(self) -> usize {
         self as usize
+    }
+
+    fn i64(self) -> i64 {
+        self as i64
+    }
+
+    fn nasm_prefix() -> &'static str {
+        "byte"
     }
 }
 
@@ -48,6 +58,14 @@ impl BrainfuckInteger for i8 {
     fn wrapping_usize(self) -> usize {
         self as usize
     }
+
+    fn i64(self) -> i64 {
+        self as i64
+    }
+
+    fn nasm_prefix() -> &'static str {
+        "byte"
+    }
 }
 
 impl BrainfuckInteger for u16 {
@@ -67,6 +85,14 @@ impl BrainfuckInteger for u16 {
 
     fn wrapping_usize(self) -> usize {
         self as usize
+    }
+
+    fn i64(self) -> i64 {
+        self as i64
+    }
+
+    fn nasm_prefix() -> &'static str {
+        "word"
     }
 }
 
@@ -88,6 +114,14 @@ impl BrainfuckInteger for i16 {
     fn wrapping_usize(self) -> usize {
         self as usize
     }
+
+    fn i64(self) -> i64 {
+        self as i64
+    }
+
+    fn nasm_prefix() -> &'static str {
+        "word"
+    }
 }
 
 impl BrainfuckInteger for u32 {
@@ -107,6 +141,14 @@ impl BrainfuckInteger for u32 {
 
     fn wrapping_usize(self) -> usize {
         self as usize
+    }
+
+    fn i64(self) -> i64 {
+        self as i64
+    }
+
+    fn nasm_prefix() -> &'static str {
+        "dword"
     }
 }
 
@@ -128,6 +170,14 @@ impl BrainfuckInteger for i32 {
     fn wrapping_usize(self) -> usize {
         self as usize
     }
+
+    fn i64(self) -> i64 {
+        self as i64
+    }
+
+    fn nasm_prefix() -> &'static str {
+        "dword"
+    }
 }
 
 impl BrainfuckInteger for u64 {
@@ -147,6 +197,14 @@ impl BrainfuckInteger for u64 {
 
     fn wrapping_usize(self) -> usize {
         self as usize
+    }
+
+    fn i64(self) -> i64 {
+        self as i64
+    }
+
+    fn nasm_prefix() -> &'static str {
+        "qword"
     }
 }
 
@@ -168,6 +226,14 @@ impl BrainfuckInteger for i64 {
     fn wrapping_usize(self) -> usize {
         self as usize
     }
+
+    fn i64(self) -> i64 {
+        self as i64
+    }
+
+    fn nasm_prefix() -> &'static str {
+        "qword"
+    }
 }
 
 impl BrainfuckInteger for isize {
@@ -188,6 +254,20 @@ impl BrainfuckInteger for isize {
     fn wrapping_usize(self) -> usize {
         self as usize
     }
+
+    fn i64(self) -> i64 {
+        self as i64
+    }
+
+    fn nasm_prefix() -> &'static str {
+        match std::mem::size_of::<isize>() {
+            1 => "byte",
+            2 => "word",
+            4 => "dword",
+            8 => "qword",
+            x => panic!("unsupported size: {}", x),
+        }
+    }
 }
 
 impl BrainfuckInteger for usize {
@@ -205,7 +285,21 @@ impl BrainfuckInteger for usize {
         "size_t"
     }
 
+    fn i64(self) -> i64 {
+        self as i64
+    }
+
     fn wrapping_usize(self) -> usize {
         self as usize
+    }
+
+    fn nasm_prefix() -> &'static str {
+        match std::mem::size_of::<isize>() {
+            1 => "byte",
+            2 => "word",
+            4 => "dword",
+            8 => "qword",
+            x => panic!("unsupported size: {}", x),
+        }
     }
 }

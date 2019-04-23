@@ -71,19 +71,20 @@ optimization features:
             .arg(Arg::with_name("format")
                 .help("\
 output formats:
- * C ........... C source
+ * source....... C and/or assembler source
  * binary ...... compiled binary (default)
  * brainfuck ... brainfuck source
  * debug ....... text representation of internal bytecode
 ")
-                .possible_values(&["C", "binary", "brainfuck", "debug"])
+                .possible_values(&["source", "binary", "brainfuck", "debug"])
                 .short("f")
                 .long("format")
                 .takes_value(true))
 
-            .arg(Arg::with_name("keep-c-source")
+            .arg(Arg::with_name("keep-source")
+                .help("Keep generated C and/or assembler source files.")
                 .short("k")
-                .long("keep-c-source")
+                .long("keep-source")
                 .takes_value(false))
 
             .arg(Arg::with_name("debug")
@@ -93,7 +94,7 @@ output formats:
                 .takes_value(false))
 
             .arg(Arg::with_name("c-opt-level")
-                .help("optimization level passed to the C compiler")
+                .help("optimization level passed to the C compiler and assembler")
                 .long("c-opt-level")
                 .takes_value(true))
 
@@ -151,7 +152,7 @@ output formats:
     match matches.subcommand() {
         ("compile", Some(sub)) => {
             let format = sub.value_of("format").unwrap_or("binary");
-            let keep_c = sub.is_present("keep-c-source");
+            let keep_source = sub.is_present("keep-source");
             let debug = sub.is_present("debug");
             let c_opt_level: u32 = sub.value_of("c-opt-level")
                 .unwrap_or("0")
@@ -159,7 +160,7 @@ output formats:
                 .expect("c-opt-level is positive integer");
             let output = sub.value_of("OUTPUT").unwrap_or(
                 match format.as_ref() {
-                    "C"         => "out.c",
+                    "source"    => "a.out",
                     "binary"    => "a.out",
                     "brainfuck" => "out.bf",
                     "debug"     => "out.txt",
@@ -167,10 +168,10 @@ output formats:
                 });
 
             match int_size {
-                 8 => compile::< i8>(&input, &output, options, &format, keep_c, debug, c_opt_level)?,
-                16 => compile::<i16>(&input, &output, options, &format, keep_c, debug, c_opt_level)?,
-                32 => compile::<i32>(&input, &output, options, &format, keep_c, debug, c_opt_level)?,
-                64 => compile::<i64>(&input, &output, options, &format, keep_c, debug, c_opt_level)?,
+                 8 => compile::< i8>(&input, &output, options, &format, keep_source, debug, c_opt_level)?,
+                16 => compile::<i16>(&input, &output, options, &format, keep_source, debug, c_opt_level)?,
+                32 => compile::<i32>(&input, &output, options, &format, keep_source, debug, c_opt_level)?,
+                64 => compile::<i64>(&input, &output, options, &format, keep_source, debug, c_opt_level)?,
                 _  => panic!("illegal integer size: {}", int_size)
             }
         },
@@ -190,17 +191,16 @@ output formats:
 }
 
 fn compile<Int: BrainfuckInteger + Signed>(
-        input: &str, output: &str, options: Options, format: &str, keep_c: bool, debug: bool, c_opt_level: u32)
+        input: &str, output: &str, options: Options, format: &str, keep_source: bool, debug: bool, c_opt_level: u32)
         -> std::result::Result<(), Error> {
     let code = Brainfuck::<Int>::from_file(input)?;
     let code = code.optimize(options)?;
 
     match format {
-        "C"         => {
-            let mut out = std::fs::File::create(output)?;
-            brainfuck::codegen::c::generate(&code, &mut out)?;
+        "source"    => {
+            brainfuck::codegen::c::generate(&code, output)?;
         },
-        "binary"    => brainfuck::codegen::c::compile(&code, output, debug, c_opt_level, keep_c)?,
+        "binary"    => brainfuck::codegen::c::compile(&code, output, debug, c_opt_level, keep_source)?,
         "brainfuck" => {
             let mut out = std::fs::File::create(output)?;
             code.write_bf(&mut out)?;

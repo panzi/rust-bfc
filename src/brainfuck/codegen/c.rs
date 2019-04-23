@@ -1,12 +1,87 @@
 extern crate num_traits;
+extern crate regex;
 
 use num_traits::Signed;
+use regex::Regex;
 use std::fs::File;
 use std::io::Write;
+use std::collections::HashMap;
 use super::super::{Brainfuck, BrainfuckInteger, Instruct};
 use super::super::indent::indent;
 
-fn generate_write_str(out: &mut Write, data: &[u8], nesting: usize) -> std::io::Result<()> {
+fn generate_asm_str(out: &mut Write, name: &str, data: &[u8]) -> std::io::Result<()> {
+    write!(out, "{:-8}db ", format!("{}:", name))?;
+    if data.len() > 0 {
+        let indent = " ".to_string()
+            .repeat(std::cmp::max(name.len() + 1, 8) + 3)
+            .into_bytes();
+        let mut quote   = false;
+        let mut endline = false;
+        let mut first   = true;
+
+        for c in data.iter() {
+            match *c {
+                b'\n' => {
+                    if endline {
+                        out.write_all(b", \\\n")?;
+                        out.write_all(&indent)?;
+                    } else if quote {
+                        out.write_all(b"\",")?;
+                    } else if !first {
+                        out.write_all(b",")?;
+                    }
+                    out.write_all(b"10")?;
+                    endline = true;
+                    quote = false;
+                },
+                b' '..=b'&' | b'('..=b'[' | b']'..=b'~' => {
+                    if endline {
+                        out.write_all(b", \\\n")?;
+                        out.write_all(&indent)?;
+                        out.write_all(b"\"")?;
+                    } else if quote {
+                        // continuing quoted string
+                    } else if first {
+                        out.write_all(b"\"")?;
+                    } else {
+                        out.write_all(b",\"")?;
+                    }
+
+                    out.write_all(&[*c])?;
+
+                    endline = false;
+                    quote = true;
+                },
+                c => {
+                    if endline {
+                        out.write_all(b", \\\n")?;
+                        out.write_all(&indent)?;
+                    } else if quote {
+                        out.write_all(b"\",")?;
+                    } else if !first {
+                        out.write_all(b",")?;
+                    }
+
+                    write!(out, "{}", c as u32)?;
+
+                    endline = false;
+                    quote = false;
+                }
+            }
+            first = false;
+        }
+
+        if quote {
+            out.write_all(b"\"")?;
+        }
+    } else {
+        out.write_all(b"\"\"\n")?;
+    }
+
+    return Ok(());
+}
+
+fn generate_c_write_str(out: &mut Write, data: &[u8], nesting: usize) -> std::io::Result<()> {
     if data.len() > 0 {
         indent(out, nesting)?;
         let multiline = if let Some(pos) = data.iter().position(|b| *b == b'\n') {
@@ -75,7 +150,8 @@ fn generate_write_str(out: &mut Write, data: &[u8], nesting: usize) -> std::io::
     return Ok(());
 }
 
-pub fn generate<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, out: &mut Write) -> std::io::Result<()> {
+pub fn generate<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_file: &str) -> std::io::Result<Vec<String>> {
+    let mut filenames = Vec::new();
     let mut min_move = 0isize;
     let mut max_move = 0isize;
     let mut cur_move = 0isize;
@@ -145,7 +221,11 @@ pub fn generate<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, out: &mut
 
         let pagesize = ((max_move as usize * std::mem::size_of::<Int>() / 4096) + 1) * 4096;
 
-        write!(out, r##"#define _GNU_SOURCE
+        let runtime_src_filename = format!("{}-runtime.c", binary_file);
+        let mut runtime = File::create(&runtime_src_filename)?;
+        filenames.push(runtime_src_filename);
+
+        write!(runtime, r##"#define _GNU_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -153,26 +233,39 @@ pub fn generate<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, out: &mut
 #include <inttypes.h>
 #include <signal.h>
 #include <string.h>
+#include <unistd.h>
+
+#ifndef __linux__
+#   error operating system currently not supported
+#endif
 
 #define PAGESIZE {0}
 
-volatile {1}* mem = NULL;
-volatile size_t mem_size = 0;
-volatile {1}* ptr = NULL;
+{1}* mem = NULL;
+size_t mem_size = 0;
 "##, pagesize, Int::c_type())?;
 
-        out.write_all(r##"
+        runtime.write_all(r##"
 struct sigaction segv_action;
 
-void memmng(int signum) {
+void brainfuck_main();
+
+void memmng(int signum, siginfo_t *info, void *vctx) {
     (void)signum;
 
-    if (!(((void*)ptr >= (void*)mem && (void*)ptr < (void*)mem + PAGESIZE) || ((void*)ptr >= (void*)mem + (mem_size - PAGESIZE) && (void*)ptr < (void*)mem + mem_size))) {
+    void *ptr = info->si_addr;
+    ucontext_t* ctx = (ucontext_t*)vctx;
+
+    if (!((ptr >= (void*)mem && ptr < (void*)mem + PAGESIZE) || (ptr >= (void*)mem + (mem_size - PAGESIZE) && ptr < (void*)mem + mem_size))) {
+        if (ptr >= (void*)mem + PAGESIZE && ptr < (void*)mem + (mem_size - PAGESIZE)) {
+            fprintf(stderr, "pid: %d, bogus SIGSEGV at 0x%zx\n", getpid(), (uintptr_t)ptr);
+            abort();
+        }
         // Some other segmantation fault! This is a compiler error!
         fprintf(stderr,
             "unhandeled segmantation fault: pagesize = %zu, ptr = 0x%zX (offset %zu), mem = 0x%zX ... 0x%zX (size %zu)\n",
             (size_t)PAGESIZE,
-            (uintptr_t)(void*)ptr, (uintptr_t)((void*)ptr - (void*)mem),
+            (uintptr_t)ptr, (uintptr_t)(ptr - (void*)mem),
             (uintptr_t)(void*)mem, (uintptr_t)((void*)mem + mem_size), mem_size);
         fflush(stderr);
         abort();
@@ -211,13 +304,19 @@ void memmng(int signum) {
         abort();
     }
 
-    if ((void*)ptr < (void*)mem + PAGESIZE) {
+    if (ptr < (void*)mem + PAGESIZE) {
         // memory underflow, move everything to the right
         memmove(new_mem + PAGESIZE * 2, (void*)new_mem + PAGESIZE, mem_size - PAGESIZE * 2);
-        ptr = (void*)ptr + PAGESIZE;
+        ptr += PAGESIZE;
     }
 
-    ptr = new_mem + (uintptr_t)((void*)ptr - (void*)mem);
+    ptr = new_mem + (uintptr_t)(ptr - (void*)mem);
+
+#ifdef __x86_64__
+    ctx->uc_mcontext.gregs[REG_R10] = (intptr_t)ptr;
+#else
+#   error architecture currently not supported
+#endif
 
     mem = new_mem;
     mem_size = new_size;
@@ -226,7 +325,8 @@ void memmng(int signum) {
 int main() {
     memset(&segv_action, 0, sizeof(struct sigaction));
 
-    segv_action.sa_handler = memmng;
+    segv_action.sa_flags = SA_SIGINFO;
+    segv_action.sa_sigaction = memmng;
     if (sigaction(SIGSEGV, &segv_action, NULL) == -1) {
         perror("sigaction");
         return EXIT_FAILURE;
@@ -249,55 +349,182 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    ptr = (void*)mem + PAGESIZE;
+    brainfuck_main();
 
+    return 0;
+}
 "##.as_bytes())?;
 
+        let mut str_table = HashMap::new();
+        let mut loop_stack = Vec::new();
+        let mut loop_count = 0usize;
+
+        let bf_src_filename = format!("{}.asm", binary_file);
+        let mut asm = File::create(&bf_src_filename)?;
+        filenames.push(bf_src_filename);
+
         for instr in code.iter() {
-            match instr {
+            if let Instruct::WriteStr(data) = instr {
+                str_table.insert(data, str_table.len());
+            }
+        }
+
+        asm.write_all(br##"bits 64
+        section .data
+"##)?;
+
+        for (msg, index) in str_table.iter() {
+            let name = format!("msg{}", index);
+            generate_asm_str(&mut asm, &name, msg)?;
+        }
+
+        asm.write_all(br##"
+        section .text
+        extern stdout
+        extern fwrite
+        extern putchar
+        extern getchar
+        extern mem
+        global brainfuck_main
+brainfuck_main:"##)?;
+
+        write!(asm, r##"
+        push rbp
+        mov  rbp, rsp
+        push r10
+        mov  r10, [rel mem]
+        add  r10, qword {}
+"##, pagesize)?;
+
+        let int_size = std::mem::size_of::<Int>() as isize;
+        let prefix = Int::nasm_prefix();
+        nesting = 2;
+        for instr in code.iter() {
+            match *instr {
                 Instruct::Move(off) => {
-                    indent(out, nesting)?;
-                    write!(out, "ptr += {};\n", off)?;
+                    indent(&mut asm, nesting)?;
+                    if int_size == 1 && off == 1 {
+                        write!(asm, "inc  qword r10\n")?;
+                    } else if int_size == 1 && off == -1 {
+                        write!(asm, "dec  qword r10\n")?;
+                    } else if off > 0 {
+                        write!(asm, "add  qword r10, {}\n", off * int_size)?;
+                    } else if off != 0 {
+                        write!(asm, "sub  qword r10, {}\n", -off * int_size)?;
+                    }
                 },
 
                 Instruct::Add(val) => {
-                    indent(out, nesting)?;
-                    write!(out, "*ptr += {:?};\n", val)?;
+                    indent(&mut asm, nesting)?;
+                    let v = val.i64();
+                    if v == 1 {
+                        write!(asm, "inc  {} [r10]\n", prefix)?;
+                    } else if v == -1 {
+                        write!(asm, "dec  {} [r10]\n", prefix)?;
+                    } else if v > 0 {
+                        write!(asm, "add  {} [r10], {}\n", prefix, v)?;
+                    } else if v != 0 {
+                        write!(asm, "sub  {} [r10], {}\n", prefix, -v)?;
+                    }
                 },
 
                 Instruct::Set(val) => {
-                    indent(out, nesting)?;
-                    write!(out, "*ptr = {:?};\n", val)?;
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "mov  {} [r10], {}\n", prefix, val.i64())?;
                 },
 
                 Instruct::Read => {
-                    indent(out, nesting)?;
-                    write!(out, "*ptr = getchar();\n")?;
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "push r10\n")?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "call getchar\n")?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "pop  r10\n")?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "mov  {} [r10], eax\n", prefix)?;
                 },
 
                 Instruct::Write => {
-                    indent(out, nesting)?;
-                    write!(out, "putchar(*ptr);\n")?;
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "push r10\n")?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "mov  edi, [r10]\n")?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "call putchar\n")?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "pop  r10\n")?;
                 },
 
                 Instruct::LoopStart(_) => {
-                    indent(out, nesting)?;
-                    write!(out, "while (*ptr) {{\n")?;
+                    loop_count += 1;
+                    loop_stack.push(loop_count);
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "cmp  {} [r10], 0\n", prefix)?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "je   loop_{}_end\n", loop_count)?;
+
+                    write!(asm, "loop_{}_start:\n", loop_count)?;
                     nesting += 1;
                 },
 
                 Instruct::LoopEnd(_) => {
                     nesting -= 1;
-                    indent(out, nesting)?;
-                    write!(out, "}}\n")?;
+                    let loop_id = loop_stack.pop().unwrap();
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "cmp  {} [r10], 0\n", prefix)?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "jne  loop_{}_start\n", loop_count)?;
+
+                    write!(asm, "loop_{}_end:\n", loop_id)?;
                 },
 
-                Instruct::WriteStr(data) => {
-                    generate_write_str(out, data, nesting)?;
+                Instruct::WriteStr(ref data) => {
+                    let msg_id = str_table.get(data).unwrap();
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "push r10\n")?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "mov  rcx, [rel stdout]\n")?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "mov  edx, 1\n")?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "mov  esi, {}\n", data.len())?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "mov  edi, msg{}\n", msg_id)?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "call fwrite\n")?;
+
+                    indent(&mut asm, nesting)?;
+                    write!(asm, "pop  r10\n")?;
                 },
             }
         }
+
+        write!(asm, r##"
+        pop  r10
+        mov  rsp, rbp
+        pop  rbp
+        ret
+"##)?;
+
     } else {
+        let c_filename = format!("{}.c", binary_file);
+        let mut out = File::create(&c_filename)?;
         write!(out, r##"#include <stdio.h>
 
 int main() {{
@@ -305,35 +532,35 @@ int main() {{
 
         for instr in code.iter() {
             if let Instruct::WriteStr(data) = instr {
-                generate_write_str(out, data, nesting)?;
+                generate_c_write_str(&mut out, data, nesting)?;
             }
         }
-    }
 
-    write!(out, r##"
+        write!(out, r##"
     return 0;
 }}"##)?;
-    Ok(())
+
+        filenames.push(c_filename);
+    }
+
+    return Ok(filenames);
 }
 
-pub fn compile_c(source_file: &str, binary_file: &str, debug: bool, optlevel: u32) -> std::io::Result<()> {
+pub fn compile_c(source_file: &str, object_file: &str, debug: bool, optlevel: u32) -> std::io::Result<()> {
     let mut cmd = std::process::Command::new("gcc");
     let cmd = if debug {
         cmd.arg("-g")
     } else {
         &mut cmd
     };
-    let cmd = if optlevel > 0 {
-        cmd.arg(format!("-O{}", optlevel))
-    } else {
-        cmd
-    };
     let status = cmd
+        .arg(format!("-O{}", optlevel))
         .arg("-Wall")
         .arg("-Wextra")
         .arg("-std=gnu11")
+        .arg("-c")
         .arg("-o")
-        .arg(binary_file)
+        .arg(object_file)
         .arg(source_file)
         .status()?;
 
@@ -351,15 +578,94 @@ pub fn compile_c(source_file: &str, binary_file: &str, debug: bool, optlevel: u3
     return Ok(());
 }
 
-pub fn compile<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_file: &str, debug: bool, optlevel: u32, keep_c_source: bool) -> std::io::Result<()> {
-    let source_file = format!("{}.c", binary_file);
-    {
-        let mut file = File::create(&source_file)?;
-        generate(code, &mut file)?;
+pub fn assemble(source_file: &str, object_file: &str, debug: bool, optlevel: u32) -> std::io::Result<()> {
+    let mut cmd = std::process::Command::new("nasm");
+    let cmd = if debug {
+        cmd.arg("-g")
+           .arg("-F")
+           .arg("dwarf")
+    } else {
+        &mut cmd
+    };
+    let status = cmd
+        .arg("-f")
+        .arg("elf64")
+        .arg(format!("-O{}", optlevel))
+        .arg("-o")
+        .arg(object_file)
+        .arg(source_file)
+        .status()?;
+
+    if !status.success() {
+        let message = if let Some(code) = status.code() {
+            format!("nasm exited with status {}", code)
+        } else {
+            "nasm terminated by signal".to_string()
+        };
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            message));
     }
-    compile_c(&source_file, &binary_file, debug, optlevel)?;
-    if !keep_c_source {
-        std::fs::remove_file(&source_file)?;
+
+    return Ok(());
+}
+
+pub fn link(obj_files: &[String], binary_file: &str, debug: bool, optlevel: u32) -> std::io::Result<()> {
+    let mut cmd = std::process::Command::new("gcc");
+    let cmd = if debug {
+        cmd.arg("-g")
+    } else {
+        &mut cmd
+    };
+    let status = cmd
+        .arg(format!("-O{}", optlevel))
+        .arg("-o")
+        .arg(binary_file)
+        .args(obj_files)
+        .status()?;
+
+    if !status.success() {
+        let message = if let Some(code) = status.code() {
+            format!("gcc exited with status {}", code)
+        } else {
+            "gcc terminated by signal".to_string()
+        };
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            message));
+    }
+
+    return Ok(());
+}
+
+pub fn compile<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_file: &str, debug: bool, optlevel: u32, keep_source: bool) -> std::io::Result<()> {
+    let filenames = generate(code, &binary_file)?;
+    let mut obj_files = Vec::new();
+    let c_re   = Regex::new(r"\.c$").unwrap();
+    let asm_re = Regex::new(r"\.asm$").unwrap();
+
+    for filename in &filenames {
+        if filename.ends_with(".c") {
+            let obj_file = format!("{}.o", c_re.replace(&filename, ""));
+            compile_c(&filename, &obj_file, debug, optlevel)?;
+            obj_files.push(obj_file);
+        } else {
+            let obj_file = format!("{}.o", asm_re.replace(&filename, ""));
+            assemble(&filename, &obj_file, debug, optlevel)?;
+            obj_files.push(obj_file);
+        }
+    }
+
+    link(&obj_files, &binary_file, debug, optlevel)?;
+    
+    if !keep_source {
+        for filename in &filenames {
+            std::fs::remove_file(filename)?;
+        }
+    }
+
+    for filename in obj_files {
+        std::fs::remove_file(filename)?;
     }
     return Ok(());
 }

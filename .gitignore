@@ -6,3 +6,6 @@
 /*.c
 *~
 a.out
+*.pdf
+/bin
+*.asm
