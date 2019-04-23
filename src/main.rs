@@ -23,7 +23,7 @@ mod brainfuck;
 use brainfuck::{Brainfuck, Error, BrainfuckInteger};
 use brainfuck::optimize::Options;
 
-fn main() -> std::result::Result<(), Error> {
+fn main() -> std::result::Result<(), std::io::Error> {
     let matches = App::new("Brainfuck Compiler")
         .version("1.0")
         .author("Mathias Panzenböck")
@@ -142,7 +142,7 @@ output formats:
 
     options.constexpr_echo = matches.is_present("echo-constexpr");
 
-    match matches.subcommand() {
+    let res = match matches.subcommand() {
         ("compile", Some(sub)) => {
             let format = sub.value_of("format").unwrap_or("binary");
             let keep_source = sub.is_present("keep-source");
@@ -161,19 +161,19 @@ output formats:
                 });
 
             match int_size {
-                 8 => compile::< i8>(&input, &output, options, &format, keep_source, debug, c_opt_level)?,
-                16 => compile::<i16>(&input, &output, options, &format, keep_source, debug, c_opt_level)?,
-                32 => compile::<i32>(&input, &output, options, &format, keep_source, debug, c_opt_level)?,
-                64 => compile::<i64>(&input, &output, options, &format, keep_source, debug, c_opt_level)?,
+                 8 => compile::< i8>(&input, &output, options, &format, keep_source, debug, c_opt_level),
+                16 => compile::<i16>(&input, &output, options, &format, keep_source, debug, c_opt_level),
+                32 => compile::<i32>(&input, &output, options, &format, keep_source, debug, c_opt_level),
+                64 => compile::<i64>(&input, &output, options, &format, keep_source, debug, c_opt_level),
                 _  => panic!("illegal integer size: {}", int_size)
             }
         },
         ("exec", _) => {
             match int_size {
-                 8 => exec::< i8>(&input, options)?,
-                16 => exec::<i16>(&input, options)?,
-                32 => exec::<i32>(&input, options)?,
-                64 => exec::<i64>(&input, options)?,
+                 8 => exec::< i8>(&input, options),
+                16 => exec::<i16>(&input, options),
+                32 => exec::<i32>(&input, options),
+                64 => exec::<i64>(&input, options),
                 _  => panic!("illegal integer size: {}", int_size)
             }
         },
@@ -185,6 +185,11 @@ output formats:
             write!(std::io::stderr(), "Illegal sub-command: {}\n", cmd)?;
             std::process::exit(1);
         },
+    };
+
+    if let Err(err) = res {
+        err.print(&mut std::io::stderr(), &input)?;
+        std::process::exit(1);
     }
 
     Ok(())

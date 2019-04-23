@@ -115,7 +115,7 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
         }
 
         if self.loop_stack.len() > 0 {
-            return Err(Error::UnmatchedLoopStart(lineno, column, begin_lineno, begin_column));
+            return Err(Error::UnmatchedLoopStart(begin_lineno, begin_column));
         }
 
         Ok(())
