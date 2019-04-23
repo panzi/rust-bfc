@@ -258,6 +258,8 @@ void memmng(int signum, siginfo_t *info, void *vctx) {
     void *ptr = info->si_addr;
     ucontext_t* ctx = (ucontext_t*)vctx;
 
+    fprintf(stderr, "segfault at index 0x%zu\n", ptr - (void*)mem);
+
     if (!((ptr >= (void*)mem && ptr < (void*)mem + PAGESIZE) || (ptr >= (void*)mem + (mem_size - PAGESIZE) && ptr < (void*)mem + mem_size))) {
         if (ptr >= (void*)mem + PAGESIZE && ptr < (void*)mem + (mem_size - PAGESIZE)) {
             fprintf(stderr, "pid: %d, bogus SIGSEGV at 0x%zx\n", getpid(), (uintptr_t)ptr);
@@ -315,7 +317,7 @@ void memmng(int signum, siginfo_t *info, void *vctx) {
     ptr = new_mem + (uintptr_t)(ptr - (void*)mem);
 
 #ifdef __x86_64__
-    ctx->uc_mcontext.gregs[REG_R10] = (intptr_t)ptr;
+    ctx->uc_mcontext.gregs[REG_R12] = (intptr_t)ptr;
 #else
 #   error architecture currently not supported
 #endif
@@ -391,113 +393,86 @@ int main() {
 brainfuck_main:
         push rbp
         mov  rbp, rsp
-        push r10
-        mov  r10, [rel mem]
-        add  r10, qword {}
+        push r12
+        mov  qword  r12 , [rel mem]
+        add  qword  r12 , {:8} ; ptr = mem + PAGESIZE;
 ", pagesize)?;
 
         let int_size = std::mem::size_of::<Int>() as isize;
-        let prefix = Int::nasm_prefix();
-        nesting = 2;
-        for (index, instr) in code.iter().enumerate() {
+        let prefix = match int_size {
+            1 => "byte ",
+            2 => "word ",
+            4 => "dword",
+            8 => "qword",
+            x => panic!("unsupported cell size: {}", x),
+        };
+        nesting = 0;
+        for instr in code.iter() {
             match *instr {
                 Instruct::Move(off) => {
-                    indent(&mut asm, nesting)?;
                     if int_size == 1 && off == 1 {
-                        write!(asm, "inc  qword r10\n")?;
+                        write!(asm, "        inc  qword r12             ; {:nesting$}ptr ++;\n", "", nesting = nesting)?;
                     } else if int_size == 1 && off == -1 {
-                        write!(asm, "dec  qword r10\n")?;
+                        write!(asm, "        dec  qword r12             ; {:nesting$}ptr --;\n", "", nesting = nesting)?;
                     } else if off > 0 {
-                        write!(asm, "add  qword r10, {}\n", off * int_size)?;
+                        let val = off * int_size;
+                        write!(asm, "        add  qword  r12 , {:8} ; {:nesting$}ptr  += {};\n", val, "", val, nesting = nesting)?;
                     } else if off != 0 {
-                        write!(asm, "sub  qword r10, {}\n", -off * int_size)?;
+                        let val = -off * int_size;
+                        write!(asm, "        sub  qword  r12 , {:8} ; {:nesting$}ptr  -= {};\n", val, "", val, nesting = nesting)?;
                     }
                 },
 
                 Instruct::Add(val) => {
-                    indent(&mut asm, nesting)?;
                     let v = val.i64();
                     if v == 1 {
-                        write!(asm, "inc  {} [r10]\n", prefix)?;
+                        write!(asm, "        inc  {} [r12]           ; {:nesting$}*ptr ++;\n", prefix, "", nesting = nesting)?;
                     } else if v == -1 {
-                        write!(asm, "dec  {} [r10]\n", prefix)?;
+                        write!(asm, "        dec  {} [r12]           ; {:nesting$}*ptr --;\n", prefix, "", nesting = nesting)?;
                     } else if v > 0 {
-                        write!(asm, "add  {} [r10], {}\n", prefix, v)?;
+                        write!(asm, "        add  {} [r12], {:8} ; {:nesting$}*ptr += {};\n", prefix, v, "", v, nesting = nesting)?;
                     } else if v != 0 {
-                        write!(asm, "sub  {} [r10], {}\n", prefix, -v)?;
+                        write!(asm, "        sub  {} [r12], {:8} ; {:nesting$}*ptr -= {};\n", prefix, -v, "", -v, nesting = nesting)?;
                     }
                 },
 
                 Instruct::Set(val) => {
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "mov  {} [r10], {}\n", prefix, val.i64())?;
+                    write!(asm, "        mov  {} [r12], {:8} ; {:nesting$}*ptr  = {};\n", prefix, val.i64(), "", val.i64(), nesting = nesting)?;
                 },
 
                 Instruct::Read => {
-                    if index == 0 || !code.code.get(index - 1).unwrap().is_func_call() {
-                        indent(&mut asm, nesting)?;
-                        write!(asm, "push r10\n")?;
+                    write!(asm, "        call getchar\n")?;
+
+                    match int_size {
+                        8 => write!(asm, "        mov  {} [r12], rax      ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
+                        4 => write!(asm, "        mov  {} [r12], eax      ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
+                        2 => write!(asm, "        mov  {} [r12], ax       ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
+                        1 => write!(asm, "        mov  {} [r12], al       ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
+                        x => panic!("unsupported cell size: {}", x),
                     }
-
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "call getchar\n")?;
-
-                    if index + 1 >= code.code.len() || !code.code.get(index + 1).unwrap().is_func_call() {
-                        indent(&mut asm, nesting)?;
-                        write!(asm, "pop  r10\n")?;
-                    } else {
-                        indent(&mut asm, nesting)?;
-                        write!(asm, "mov  r10, [esp]\n")?;
-                    }
-
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "mov  {} [r10], eax\n", prefix)?;
                 },
 
                 Instruct::Write => {
-                    if index == 0 || !code.code.get(index - 1).unwrap().is_func_call() {
-                        indent(&mut asm, nesting)?;
-                        write!(asm, "push r10\n")?;
-                    }
-
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "mov  edi, [r10]\n")?;
-
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "call putchar\n")?;
-
-                    if index + 1 >= code.code.len() || !code.code.get(index + 1).unwrap().is_func_call() {
-                        indent(&mut asm, nesting)?;
-                        write!(asm, "pop  r10\n")?;
-                    } else if code.code.get(index + 1).unwrap().is_write() {
-                        indent(&mut asm, nesting)?;
-                        write!(asm, "mov  r10, [esp]\n")?;
-                    }
+                    write!(asm, "        mov  edi, [r12]\n")?;
+                    write!(asm, "        call putchar ; putchar(*ptr)\n")?;
                 },
 
                 Instruct::LoopStart(_) => {
                     loop_count += 1;
                     loop_stack.push(loop_count);
 
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "cmp  {} [r10], 0\n", prefix)?;
-
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "je   loop_{}_end\n", loop_count)?;
-
+                    write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}while (*ptr) {{\n", prefix, "", nesting = nesting)?;
+                    write!(asm, "        je   loop_{}_end\n", loop_count)?;
                     write!(asm, "loop_{}_start:\n", loop_count)?;
-                    nesting += 1;
+                    nesting += 4;
                 },
 
                 Instruct::LoopEnd(_) => {
-                    nesting -= 1;
+                    nesting -= 4;
                     let loop_id = loop_stack.pop().unwrap();
 
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "cmp  {} [r10], 0\n", prefix)?;
-
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "jne  loop_{}_start\n", loop_count)?;
+                    write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}}}\n", prefix, "", nesting = nesting)?;
+                    write!(asm, "        jne  loop_{}_start\n", loop_count)?;
 
                     write!(asm, "loop_{}_end:\n", loop_id)?;
                 },
@@ -505,39 +480,17 @@ brainfuck_main:
                 Instruct::WriteStr(ref data) => {
                     let msg_id = str_table.get(data).unwrap();
 
-                    if index == 0 || !code.code.get(index - 1).unwrap().is_func_call() {
-                        indent(&mut asm, nesting)?;
-                        write!(asm, "push r10\n")?;
-                    }
-
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "mov  rcx, [rel stdout]\n")?;
-
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "mov  edx, 1\n")?;
-
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "mov  esi, {}\n", data.len())?;
-
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "mov  edi, msg{}\n", msg_id)?;
-
-                    indent(&mut asm, nesting)?;
-                    write!(asm, "call fwrite\n")?;
-
-                    if index + 1 >= code.code.len() || !code.code.get(index + 1).unwrap().is_func_call() {
-                        indent(&mut asm, nesting)?;
-                        write!(asm, "pop  r10\n")?;
-                    } else if code.code.get(index + 1).unwrap().is_write() {
-                        indent(&mut asm, nesting)?;
-                        write!(asm, "mov  r10, [esp]\n")?;
-                    }
+                    write!(asm, "        mov  rcx, [rel stdout]\n")?;
+                    write!(asm, "        mov  edx, 1\n")?;
+                    write!(asm, "        mov  esi, {}\n", data.len())?;
+                    write!(asm, "        mov  edi, msg{}\n", msg_id)?;
+                    write!(asm, "        call fwrite             ; {:nesting$}fwrite(msg{}, {}, 1, stdout);\n", "", msg_id, data.len(), nesting = nesting)?;
                 },
             }
         }
 
         asm.write_all(
-b"        pop  r10
+b"        pop  r12
         mov  rsp, rbp
         pop  rbp
         ret
