@@ -258,8 +258,6 @@ void memmng(int signum, siginfo_t *info, void *vctx) {
     void *ptr = info->si_addr;
     ucontext_t* ctx = (ucontext_t*)vctx;
 
-    fprintf(stderr, "segfault at index 0x%zu\n", ptr - (void*)mem);
-
     if (!((ptr >= (void*)mem && ptr < (void*)mem + PAGESIZE) || (ptr >= (void*)mem + (mem_size - PAGESIZE) && ptr < (void*)mem + mem_size))) {
         if (ptr >= (void*)mem + PAGESIZE && ptr < (void*)mem + (mem_size - PAGESIZE)) {
             fprintf(stderr, "pid: %d, bogus SIGSEGV at 0x%zx\n", getpid(), (uintptr_t)ptr);
@@ -474,7 +472,7 @@ brainfuck_main:
                     let loop_id = loop_stack.pop().unwrap();
 
                     write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}}}\n", prefix, "", nesting = nesting)?;
-                    write!(asm, "        jne  loop_{}_start\n", loop_count)?;
+                    write!(asm, "        jne  loop_{}_start\n", loop_id)?;
 
                     write!(asm, "loop_{}_end:\n", loop_id)?;
                 },
