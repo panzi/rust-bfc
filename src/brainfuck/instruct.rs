@@ -29,19 +29,3 @@ impl<Int: BrainfuckInteger + Signed> Clone for Instruct<Int> {
         }
     }
 }
-
-impl<Int: BrainfuckInteger + Signed> Instruct<Int> {
-    pub fn is_func_call(&self) -> bool {
-        match self {
-            Instruct::Read | Instruct::Write | Instruct::WriteStr(_) => true,
-            _ => false
-        }
-    }
-
-    pub fn is_write(&self) -> bool {
-        match self {
-            Instruct::Write => true,
-            _ => false
-        }
-    }
-}

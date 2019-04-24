@@ -426,9 +426,9 @@ brainfuck_main:
                 Instruct::Add(val) => {
                     let v = val.i64();
                     if v == 1 {
-                        write!(asm, "        inc  {} [r12]           ; {:nesting$}*ptr  += 1;\n", prefix, "", nesting = nesting)?;
+                        write!(asm, "        inc  {} [r12]           ; {:nesting$}*ptr += 1;\n", prefix, "", nesting = nesting)?;
                     } else if v == -1 {
-                        write!(asm, "        dec  {} [r12]           ; {:nesting$}*ptr  -= 1;\n", prefix, "", nesting = nesting)?;
+                        write!(asm, "        dec  {} [r12]           ; {:nesting$}*ptr -= 1;\n", prefix, "", nesting = nesting)?;
                     } else if v > 0 {
                         write!(asm, "        add  {} [r12], {:8} ; {:nesting$}*ptr += {};\n", prefix, v, "", v, nesting = nesting)?;
                     } else if v != 0 {
