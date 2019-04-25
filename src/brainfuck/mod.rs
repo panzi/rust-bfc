@@ -157,7 +157,7 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
     }
 
     pub fn push_loop_end(&mut self) {
-        let ptr = self.loop_stack.pop().unwrap();
+        let ptr = self.loop_stack.pop().expect("unmatched ']'");
         self.code.push(Instruct::LoopEnd(ptr));
         let end_ptr = self.code.len();
         std::mem::replace(&mut self.code[ptr], Instruct::LoopStart(end_ptr));
