@@ -200,6 +200,7 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
         let mut mem = Vec::<Int>::new();
         let mut ptr = 0usize;
         let mut pc  = 0usize;
+        let mut need_flush = false;
 
         loop {
             if let Some(instr) = self.code.get(pc) {
@@ -234,6 +235,10 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
                     Instruct::Read => {
                         pc += 1;
                         let mut data = [0u8];
+                        if need_flush {
+                            std::io::stdout().flush()?;
+                            need_flush = false;
+                        }
                         let count = std::io::stdin().read(&mut data)?;
                         if ptr >= mem.len() {
                             mem.resize(ptr + 1, Int::zero());
@@ -250,13 +255,17 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
                         if ptr >= mem.len() {
                             mem.resize(ptr + 1, Int::zero());
                         }
-                        let data = [mem[ptr].get_least_byte()];
-                        std::io::stdout().write_all(&data)?;
+                        let byte = mem[ptr].get_least_byte();
+                        std::io::stdout().write_all(&[byte])?;
+                        need_flush = byte != b'\n';
                     },
 
                     Instruct::WriteStr(ref data) => {
                         pc += 1;
-                        std::io::stdout().write_all(data)?;
+                        if data.len() > 0 {
+                            std::io::stdout().write_all(data)?;
+                            need_flush = data[data.len() - 1] != b'\n';
+                        }
                     },
 
                     Instruct::LoopStart(pc_false) => {
@@ -277,6 +286,10 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
             } else {
                 break;
             }
+        }
+
+        if need_flush {
+            std::io::stdout().flush()?;
         }
 
         Ok(())

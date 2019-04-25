@@ -108,9 +108,12 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
         }
     }
 
+    if echo {
+        std::io::stdout().flush()?;
+    }
+
     if pc < code.len() {
         for (target_ptr, val) in mem.iter().enumerate() {
-            //println!("*(ptr + {}) = {:?}", target_ptr, *val);
             if *val != Int::zero() {
                 if current_ptr != target_ptr {
                     let off = (target_ptr as isize) - (current_ptr as isize);

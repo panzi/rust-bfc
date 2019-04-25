@@ -388,6 +388,7 @@ int main() {
         extern fwrite
         extern putchar
         extern getchar
+        extern fflush
         extern mem
         global brainfuck_main
 brainfuck_main:
@@ -441,6 +442,9 @@ brainfuck_main:
                 },
 
                 Instruct::Read => {
+                    write!(asm, "        mov  rdi, [rel stdout]\n")?;
+                    write!(asm, "        call fflush                ; {:nesting$}fflush(stdout);\n", "", nesting = nesting)?;
+
                     write!(asm, "        call getchar\n")?;
 
                     match int_size {
@@ -504,6 +508,7 @@ b"        pop  r12
     } else {
         let c_filename = format!("{}.c", binary_file);
         let mut out = File::create(&c_filename)?;
+        let mut need_flush = false;
         write!(out, r##"#include <stdio.h>
 
 int main() {{
@@ -511,13 +516,18 @@ int main() {{
 
         for instr in code.iter() {
             if let Instruct::WriteStr(data) = instr {
-                generate_c_write_str(&mut out, data, nesting)?;
+                if data.len() > 0 {
+                    generate_c_write_str(&mut out, data, nesting)?;
+                    need_flush = data[data.len() - 1] != b'\n';
+                }
             }
         }
 
-        write!(out, r##"
-    return 0;
-}}"##)?;
+        if need_flush {
+            out.write_all(b"    fflush(stdout);\n")?;
+        }
+
+        out.write_all(b"\n    return 0;\n}\n")?;
 
         filenames.push(c_filename);
     }
