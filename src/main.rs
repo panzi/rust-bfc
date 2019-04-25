@@ -140,6 +140,7 @@ output formats:
                 "-constexpr" => {
                     options.constexpr = false;
                 },
+                "" => {},
                 _ => {
                     panic!("illegal optimization: {}", opt);
                 }
