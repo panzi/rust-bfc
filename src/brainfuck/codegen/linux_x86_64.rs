@@ -483,7 +483,11 @@ brainfuck_main:
                                 }
                             },
                             _ => {
-                                write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}while (*ptr) {{\n", prefix, "", nesting = nesting)?;
+                                let stmt = if let Some(Instruct::Set(val2)) = code.get(pc_loop_end - 2) {
+                                    if *val2 == Int::zero() { "if" } else { "while" }
+                                } else { "while" };
+
+                                write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}{} (*ptr) {{\n", prefix, "", stmt, nesting = nesting)?;
                                 write!(asm, "        je   loop_{}_end\n", loop_count)?;
                                 write!(asm, "loop_{}_start:\n", loop_count)?;
                                 nesting += 4;
@@ -492,21 +496,24 @@ brainfuck_main:
                         }
                     },
 
-                    Instruct::LoopEnd(_) => {
+                    Instruct::LoopEnd(pc_start) => {
                         nesting -= 4;
                         let loop_id = loop_stack.pop().unwrap();
+                        let stmt = if let Some(Instruct::Set(_)) = if pc_start > 0 { code.get(pc_start - 1) } else { None } {
+                            "} while (*ptr);"
+                        } else { "}" };
 
                         match if pc == 0 { None } else { code.get(pc - 1) } {
                             Some(Instruct::Set(val)) => {
                                 if *val == Int::zero() {
-                                    write!(asm, "                                   ; {:nesting$}}}\n", "", nesting = nesting)?;
+                                    write!(asm, "                                   ; {:nesting$}{}\n", "", stmt, nesting = nesting)?;
                                 } else {
                                     // This would be an infinite loop, right?
-                                    write!(asm, "        jmp  {:7} ; {:nesting$}}}\n", format!("loop_{}_start", loop_id), "", nesting = nesting)?;
+                                    write!(asm, "        jmp  {:7} ; {:nesting$}{}\n", format!("loop_{}_start", loop_id), "", stmt, nesting = nesting)?;
                                 }
                             },
                             _ => {
-                                write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}}}\n", prefix, "", nesting = nesting)?;
+                                write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}{}\n", prefix, "", stmt, nesting = nesting)?;
                                 write!(asm, "        jne  loop_{}_start\n", loop_id)?;
                             }
                         }
