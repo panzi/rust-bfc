@@ -408,93 +408,131 @@ brainfuck_main:
             x => panic!("unsupported cell size: {}", x),
         };
         nesting = 0;
-        for instr in code.iter() {
-            match *instr {
-                Instruct::Move(off) => {
-                    if int_size == 1 && off == 1 {
-                        write!(asm, "        inc  qword r12             ; {:nesting$}ptr ++;\n", "", nesting = nesting)?;
-                    } else if int_size == 1 && off == -1 {
-                        write!(asm, "        dec  qword r12             ; {:nesting$}ptr --;\n", "", nesting = nesting)?;
-                    } else if off > 0 {
-                        let val = off * int_size;
-                        write!(asm, "        add  qword  r12 , {:8} ; {:nesting$}ptr  += {};\n", val, "", off, nesting = nesting)?;
-                    } else if off != 0 {
-                        let val = -off * int_size;
-                        write!(asm, "        sub  qword  r12 , {:8} ; {:nesting$}ptr  -= {};\n", val, "", -off, nesting = nesting)?;
-                    }
-                },
+        let mut pc = 0;
+        loop {
+            if let Some(instr) = code.get(pc) {
+                match *instr {
+                    Instruct::Move(off) => {
+                        if int_size == 1 && off == 1 {
+                            write!(asm, "        inc  qword r12             ; {:nesting$}ptr ++;\n", "", nesting = nesting)?;
+                        } else if int_size == 1 && off == -1 {
+                            write!(asm, "        dec  qword r12             ; {:nesting$}ptr --;\n", "", nesting = nesting)?;
+                        } else if off > 0 {
+                            let val = off * int_size;
+                            write!(asm, "        add  qword  r12 , {:8} ; {:nesting$}ptr  += {};\n", val, "", off, nesting = nesting)?;
+                        } else if off != 0 {
+                            let val = -off * int_size;
+                            write!(asm, "        sub  qword  r12 , {:8} ; {:nesting$}ptr  -= {};\n", val, "", -off, nesting = nesting)?;
+                        }
+                        pc += 1;
+                    },
 
-                Instruct::Add(val) => {
-                    let v = val.as_i64();
-                    if v == 1 {
-                        write!(asm, "        inc  {} [r12]           ; {:nesting$}*ptr += 1;\n", prefix, "", nesting = nesting)?;
-                    } else if v == -1 {
-                        write!(asm, "        dec  {} [r12]           ; {:nesting$}*ptr -= 1;\n", prefix, "", nesting = nesting)?;
-                    } else if v > 0 {
-                        write!(asm, "        add  {} [r12], {:8} ; {:nesting$}*ptr += {};\n", prefix, v, "", v, nesting = nesting)?;
-                    } else if v != 0 {
-                        write!(asm, "        sub  {} [r12], {:8} ; {:nesting$}*ptr -= {};\n", prefix, -v, "", -v, nesting = nesting)?;
-                    }
-                },
+                    Instruct::Add(val) => {
+                        let v = val.as_i64();
+                        if v == 1 {
+                            write!(asm, "        inc  {} [r12]           ; {:nesting$}*ptr += 1;\n", prefix, "", nesting = nesting)?;
+                        } else if v == -1 {
+                            write!(asm, "        dec  {} [r12]           ; {:nesting$}*ptr -= 1;\n", prefix, "", nesting = nesting)?;
+                        } else if v > 0 {
+                            write!(asm, "        add  {} [r12], {:8} ; {:nesting$}*ptr += {};\n", prefix, v, "", v, nesting = nesting)?;
+                        } else if v != 0 {
+                            write!(asm, "        sub  {} [r12], {:8} ; {:nesting$}*ptr -= {};\n", prefix, -v, "", -v, nesting = nesting)?;
+                        }
+                        pc += 1;
+                    },
 
-                Instruct::Set(val) => {
-                    write!(asm, "        mov  {} [r12], {:8} ; {:nesting$}*ptr  = {};\n", prefix, val.as_i64(), "", val.as_i64(), nesting = nesting)?;
-                },
+                    Instruct::Set(val) => {
+                        write!(asm, "        mov  {} [r12], {:8} ; {:nesting$}*ptr  = {};\n", prefix, val.as_i64(), "", val.as_i64(), nesting = nesting)?;
+                        pc += 1;
+                    },
 
-                Instruct::Read => {
-                    write!(asm, "        mov  rdi, [rel stdout]\n")?;
-                    write!(asm, "        call fflush                ; {:nesting$}fflush(stdout);\n", "", nesting = nesting)?;
+                    Instruct::Read => {
+                        write!(asm, "        mov  rdi, [rel stdout]\n")?;
+                        write!(asm, "        call fflush                ; {:nesting$}fflush(stdout);\n", "", nesting = nesting)?;
 
-                    write!(asm, "        call getchar\n")?;
+                        write!(asm, "        call getchar\n")?;
 
-                    match int_size {
-                        8 => write!(asm, "        mov  {} [r12], rax      ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
-                        4 => write!(asm, "        mov  {} [r12], eax      ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
-                        2 => write!(asm, "        mov  {} [r12], ax       ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
-                        1 => write!(asm, "        mov  {} [r12], al       ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
-                        x => panic!("unsupported cell size: {}", x),
-                    }
-                },
+                        match int_size {
+                            8 => write!(asm, "        mov  {} [r12], rax      ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
+                            4 => write!(asm, "        mov  {} [r12], eax      ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
+                            2 => write!(asm, "        mov  {} [r12], ax       ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
+                            1 => write!(asm, "        mov  {} [r12], al       ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
+                            x => panic!("unsupported cell size: {}", x),
+                        }
+                        pc += 1;
+                    },
 
-                Instruct::Write => {
-                    write!(asm, "        mov  edi,  [r12]\n")?;
-                    write!(asm, "        call putchar               ; {:nesting$}putchar(*ptr)\n", "", nesting = nesting)?;
-                },
+                    Instruct::Write => {
+                        write!(asm, "        mov  edi,  [r12]\n")?;
+                        write!(asm, "        call putchar               ; {:nesting$}putchar(*ptr)\n", "", nesting = nesting)?;
+                        pc += 1;
+                    },
 
-                Instruct::LoopStart(_) => {
-                    loop_count += 1;
-                    loop_stack.push(loop_count);
+                    Instruct::LoopStart(pc_loop_end) => {
+                        loop_count += 1;
+                        loop_stack.push(loop_count);
 
-                    write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}while (*ptr) {{\n", prefix, "", nesting = nesting)?;
-                    write!(asm, "        je   loop_{}_end\n", loop_count)?;
-                    write!(asm, "loop_{}_start:\n", loop_count)?;
-                    nesting += 4;
-                },
+                        match if pc == 0 { None } else { code.get(pc - 1) } {
+                            Some(Instruct::Set(val)) => {
+                                if *val == Int::zero() {
+                                    pc = pc_loop_end;
+                                } else {
+                                    write!(asm, "loop_{}_start:                     ; {:nesting$}do {{\n", loop_count, "", nesting = nesting)?;
+                                    nesting += 4;
+                                    pc += 1;
+                                }
+                            },
+                            _ => {
+                                write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}while (*ptr) {{\n", prefix, "", nesting = nesting)?;
+                                write!(asm, "        je   loop_{}_end\n", loop_count)?;
+                                write!(asm, "loop_{}_start:\n", loop_count)?;
+                                nesting += 4;
+                                pc += 1;
+                            }
+                        }
+                    },
 
-                Instruct::LoopEnd(_) => {
-                    nesting -= 4;
-                    let loop_id = loop_stack.pop().unwrap();
+                    Instruct::LoopEnd(_) => {
+                        nesting -= 4;
+                        let loop_id = loop_stack.pop().unwrap();
 
-                    write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}}}\n", prefix, "", nesting = nesting)?;
-                    write!(asm, "        jne  loop_{}_start\n", loop_id)?;
+                        match if pc == 0 { None } else { code.get(pc - 1) } {
+                            Some(Instruct::Set(val)) => {
+                                if *val == Int::zero() {
+                                    write!(asm, "                                   ; {:nesting$}}}\n", "", nesting = nesting)?;
+                                } else {
+                                    // This would be an infinite loop, right?
+                                    write!(asm, "        jmp  {:7} ; {:nesting$}}}\n", format!("loop_{}_start", loop_id), "", nesting = nesting)?;
+                                }
+                            },
+                            _ => {
+                                write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}}}\n", prefix, "", nesting = nesting)?;
+                                write!(asm, "        jne  loop_{}_start\n", loop_id)?;
+                            }
+                        }
 
-                    write!(asm, "loop_{}_end:\n", loop_id)?;
-                },
+                        write!(asm, "loop_{}_end:\n", loop_id)?;
+                        pc += 1;
+                    },
 
-                Instruct::WriteStr(ref data) => {
-                    if data.len() == 1 {
-                        write!(asm, "        mov  edi, {}\n", data[0])?;
-                        write!(asm, "        call putchar               ; {:nesting$}putchar({})\n", "", data[0], nesting = nesting)?;
-                    } else if data.len() > 0 {
-                        let msg_id = str_table.get(data).unwrap();
+                    Instruct::WriteStr(ref data) => {
+                        if data.len() == 1 {
+                            write!(asm, "        mov  edi, {}\n", data[0])?;
+                            write!(asm, "        call putchar               ; {:nesting$}putchar({})\n", "", data[0], nesting = nesting)?;
+                        } else if data.len() > 0 {
+                            let msg_id = str_table.get(data).unwrap();
 
-                        write!(asm, "        mov  rcx, [rel stdout]\n")?;
-                        write!(asm, "        mov  edx, 1\n")?;
-                        write!(asm, "        mov  esi, {}\n", data.len())?;
-                        write!(asm, "        mov  edi, msg{}\n", msg_id)?;
-                        write!(asm, "        call fwrite                ; {:nesting$}fwrite(msg{}, {}, 1, stdout);\n", "", msg_id, data.len(), nesting = nesting)?;
-                    }
-                },
+                            write!(asm, "        mov  rcx, [rel stdout]\n")?;
+                            write!(asm, "        mov  edx, 1\n")?;
+                            write!(asm, "        mov  esi, {}\n", data.len())?;
+                            write!(asm, "        mov  edi, msg{}\n", msg_id)?;
+                            write!(asm, "        call fwrite                ; {:nesting$}fwrite(msg{}, {}, 1, stdout);\n", "", msg_id, data.len(), nesting = nesting)?;
+                        }
+                        pc += 1;
+                    },
+                }
+            } else {
+                break;
             }
         }
 

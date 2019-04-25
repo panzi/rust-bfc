@@ -134,6 +134,12 @@ output formats:
                 "-write" => {
                     options.write = false;
                 },
+                "deadcode" | "+deadcode" => {
+                    options.deadcode = true;
+                },
+                "-deadcode" => {
+                    options.deadcode = false;
+                },
                 "constexpr" | "+constexpr" => {
                     options.constexpr = true;
                 },

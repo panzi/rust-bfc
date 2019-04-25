@@ -1,17 +1,20 @@
 mod fold;
 mod set;
 mod write;
+mod deadcode;
 mod constexpr;
 
 pub use fold::optimize as fold;
 pub use set::optimize as set;
 pub use write::optimize as write;
+pub use deadcode::optimize as deadcode;
 pub use constexpr::optimize as constexpr;
 
 pub struct Options {
     pub fold:           bool,
     pub set:            bool,
     pub write:          bool,
+    pub deadcode:       bool,
     pub constexpr:      bool,
     pub constexpr_echo: bool,
 }
@@ -22,6 +25,7 @@ impl std::default::Default for Options {
             fold:           false,
             set:            false,
             write:          false,
+            deadcode:       false,
             constexpr:      false,
             constexpr_echo: false,
         }
@@ -34,6 +38,7 @@ impl Options {
             fold:           true,
             set:            true,
             write:          true,
+            deadcode:       true,
             constexpr:      true,
             constexpr_echo: true,
         }
@@ -44,6 +49,7 @@ impl Options {
             fold:           false,
             set:            false,
             write:          false,
+            deadcode:       false,
             constexpr:      false,
             constexpr_echo: false,
         }

@@ -182,16 +182,18 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
 
     pub fn optimize(&self, options: optimize::Options) -> std::io::Result<Self> {
         let mut code = if options.fold { optimize::fold(self) } else { self.clone() };
-        if options.set   { code = optimize::set(&code); }
-        if options.write { code = optimize::write(&code); }
-        if options.fold  { code = optimize::fold(&code); }
+        if options.set      { code = optimize::set(&code); }
+        if options.write    { code = optimize::write(&code); }
+        if options.deadcode { code = optimize::deadcode(&code); }
+        if options.fold     { code = optimize::fold(&code); }
         if options.constexpr {
             code = optimize::constexpr(&code, options.constexpr_echo)?;
 
-            if options.fold  { code = optimize::fold(&code); }
-            if options.set   { code = optimize::set(&code); }
-            if options.write { code = optimize::write(&code); }
-            if options.fold  { code = optimize::fold(&code); }
+            if options.fold     { code = optimize::fold(&code); }
+            if options.set      { code = optimize::set(&code); }
+            if options.write    { code = optimize::write(&code); }
+            if options.deadcode { code = optimize::deadcode(&code); }
+            if options.fold     { code = optimize::fold(&code); }
         }
         return Ok(code);
     }
