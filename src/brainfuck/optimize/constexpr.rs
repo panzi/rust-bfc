@@ -86,11 +86,11 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
     }
 
     if pc < code.code.len() {
-        let mut current_ptr = ptr;
+        let mut current_ptr = 0;
         for (target_ptr, val) in mem.iter().enumerate() {
             if *val != Int::zero() {
                 if current_ptr != target_ptr {
-                    let off = (target_ptr as isize) - (ptr as isize);
+                    let off = (target_ptr as isize) - (current_ptr as isize);
                     opt_code.push_move(off);
                     current_ptr = target_ptr;
                 }
@@ -99,7 +99,7 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
         }
 
         if current_ptr != ptr {
-            let off = (ptr as isize) - (ptr as isize);
+            let off = (ptr as isize) - (current_ptr as isize);
             opt_code.push_move(off);
         }
 
