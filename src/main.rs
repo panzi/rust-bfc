@@ -37,17 +37,17 @@ fn main() -> std::result::Result<(), std::io::Error> {
 
         .arg(Arg::with_name("optimizations")
             .help("\
-optimization features:
+Comma separated list of optimization features:
  * fold ........ fold consecutive + - < > operations
  * set ......... detect value setting
  * write ....... join consecutive writes
  * constexpr ... execute code not dependant on input during compile time
  * all ......... all optimizations
  * none ........ no optimizations (default)
+
+'-feature' removes the feature. E.g. you can write --opt all,-constexpr
+to enable all features except constexpr.
 ")
-            .number_of_values(1)
-            .multiple(true)
-            .possible_values(&["fold", "set", "write", "constexpr", "all", "none"])
             .short("O")
             .long("opt")
             .takes_value(true))
@@ -107,26 +107,38 @@ output formats:
     let input = matches.value_of("INPUT").expect("input file is required");
     let mut options = Options::none();
 
-    if let Some(opts) = matches.values_of("optimizations") {
-        for opt in opts {
+    if let Some(opts) = matches.value_of("optimizations") {
+        for opt in opts.split(",") {
             match opt.as_ref() {
-                "all" => {
+                "all" | "+all" | "-none" => {
                     options = Options::all();
                 },
-                "none" => {
+                "none" | "+none" | "-all" => {
                     options = Options::none();
                 },
-                "fold" => {
+                "fold" | "+fold" => {
                     options.fold = true;
                 },
-                "set" => {
+                "-fold" => {
+                    options.fold = false;
+                },
+                "set" | "+set" => {
                     options.set = true;
                 },
-                "write" => {
+                "-set" => {
+                    options.set = false;
+                },
+                "write" | "+write" => {
                     options.write = true;
                 },
-                "constexpr" => {
+                "-write" => {
+                    options.write = false;
+                },
+                "constexpr" | "+constexpr" => {
                     options.constexpr = true;
+                },
+                "-constexpr" => {
+                    options.constexpr = false;
                 },
                 _ => {
                     panic!("illegal optimization: {}", opt);
