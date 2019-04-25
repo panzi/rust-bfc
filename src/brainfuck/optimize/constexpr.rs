@@ -5,14 +5,19 @@ use std::io::Write;
 
 pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int>, echo: bool) -> std::io::Result<Brainfuck<Int>> {
     let mut opt_code = Brainfuck::new();
+    let mut dirty = Vec::<bool>::new();
     let mut mem = Vec::<Int>::new();
     let mut ptr = 0usize;
     let mut pc  = 0usize;
+    let mut current_ptr = 0;
 
     loop {
-        if let Some(instr) = code.code.get(pc) {
+        if let Some(instr) = code.get(pc) {
             match *instr {
                 Instruct::Move(off) => {
+                    if let Some(true) = dirty.get(ptr) {
+                        break;
+                    }
                     pc += 1;
                     if off == std::isize::MIN || (ptr as isize) < -off {
                         let diff = (-(ptr as isize) - off) as usize;
@@ -24,6 +29,9 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
                 },
 
                 Instruct::Add(val) => {
+                    if let Some(true) = dirty.get(ptr) {
+                        break;
+                    }
                     pc += 1;
                     if ptr >= mem.len() {
                         mem.resize(ptr + 1, Int::zero());
@@ -32,6 +40,9 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
                 },
 
                 Instruct::Set(val) => {
+                    if let Some(true) = dirty.get(ptr) {
+                        dirty[ptr] = false;
+                    }
                     pc += 1;
                     if ptr >= mem.len() {
                         mem.resize(ptr + 1, Int::zero());
@@ -41,11 +52,20 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
 
                 Instruct::Read => {
                     pc += 1;
+                    if ptr >= dirty.len() {
+                        dirty.resize(ptr + 1, false);
+                    }
+                    dirty[ptr] = true;
+                    if ptr != current_ptr {
+                        opt_code.push_move(current_ptr as isize - ptr as isize);
+                    }
                     opt_code.push_read();
-                    break;
                 },
 
                 Instruct::Write => {
+                    if let Some(true) = dirty.get(ptr) {
+                        break;
+                    }
                     pc += 1;
                     if ptr >= mem.len() {
                         mem.resize(ptr + 1, Int::zero());
@@ -66,6 +86,9 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
                 },
 
                 Instruct::LoopStart(pc_false) => {
+                    if let Some(true) = dirty.get(ptr) {
+                        break;
+                    }
                     if ptr >= mem.len() {
                         mem.resize(ptr + 1, Int::zero());
                     }
@@ -85,9 +108,9 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
         }
     }
 
-    if pc < code.code.len() {
-        let mut current_ptr = 0;
+    if pc < code.len() {
         for (target_ptr, val) in mem.iter().enumerate() {
+            //println!("*(ptr + {}) = {:?}", target_ptr, *val);
             if *val != Int::zero() {
                 if current_ptr != target_ptr {
                     let off = (target_ptr as isize) - (current_ptr as isize);
@@ -103,7 +126,7 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
             opt_code.push_move(off);
         }
 
-        while let Some(instr) = code.code.get(pc) {
+        while let Some(instr) = code.get(pc) {
             opt_code.push(instr);
             pc += 1;
         }

@@ -31,10 +31,6 @@ impl<Int: BrainfuckInteger + Signed> Clone for Brainfuck<Int> {
 }
 
 impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
-    pub fn iter(&self) -> std::slice::Iter<Instruct<Int>> {
-        self.code.iter()
-    }
-
     pub fn new() -> Brainfuck<Int> {
         Brainfuck {
             code: vec![],
@@ -52,6 +48,20 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
         let mut code = Self::new();
         code.parse(input)?;
         Ok(code)
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<Instruct<Int>> {
+        self.code.iter()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.code.len()
+    }
+
+    #[inline]
+    pub fn get(&self, index: usize) -> Option<&Instruct<Int>> {
+        self.code.get(index)
     }
 
     pub fn parse(&mut self, input: &str) -> std::result::Result<(), Error> {

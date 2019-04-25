@@ -3,14 +3,14 @@ use super::super::{Brainfuck, BrainfuckInteger, Instruct};
 
 fn optimize_write_str<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int>, mut index: usize, mut last_val: Int, data: &mut Vec<u8>) -> (usize, Int) {
     loop {
-        if let (Some(Instruct::Set(val)), Some(Instruct::Write)) = (code.code.get(index), code.code.get(index + 1)) {
+        if let (Some(Instruct::Set(val)), Some(Instruct::Write)) = (code.get(index), code.get(index + 1)) {
             index += 2;
             last_val = *val;
             data.push(val.get_least_byte());
-        } else if let Some(Instruct::Write) = code.code.get(index) {
+        } else if let Some(Instruct::Write) = code.get(index) {
             index += 1;
             data.push(last_val.get_least_byte());
-        } else if let Some(Instruct::WriteStr(data2)) = code.code.get(index) {
+        } else if let Some(Instruct::WriteStr(data2)) = code.get(index) {
             index += 1;
             data.extend(data2);
         } else {
@@ -25,7 +25,7 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
     let mut index = 0usize;
 
     loop {
-        match (code.code.get(index), code.code.get(index + 1)) {
+        match (code.get(index), code.get(index + 1)) {
             (Some(Instruct::Set(val)), Some(Instruct::Write)) => {
                 index += 2;
                 let mut data = vec![val.get_least_byte()];
@@ -39,7 +39,7 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
             _ => {}
         }
 
-        if let Some(instr) = code.code.get(index) {
+        if let Some(instr) = code.get(index) {
             index += 1;
             if let Instruct::WriteStr(data) = instr {
                 if data.len() > 0 {

@@ -6,7 +6,7 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
     let mut index = 0usize;
 
     loop {
-        match (code.code.get(index), code.code.get(index + 1), code.code.get(index + 2), code.code.get(index + 3)) {
+        match (code.get(index), code.get(index + 1), code.get(index + 2), code.get(index + 3)) {
             (Some(Instruct::LoopStart(_)), Some(Instruct::Add(_)), Some(Instruct::LoopEnd(_)), Some(Instruct::Add(val))) => {
                 index += 4;
                 opt_code.push_set(*val);
@@ -16,13 +16,13 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
         }
 
         if let (Some(Instruct::LoopStart(_)), Some(Instruct::Add(_)), Some(Instruct::LoopEnd(_))) =
-                (code.code.get(index), code.code.get(index + 1), code.code.get(index + 2)) {
+                (code.get(index), code.get(index + 1), code.get(index + 2)) {
             index += 3;
             opt_code.push_set(Int::zero());
             continue;
         }
 
-        if let Some(instr) = code.code.get(index) {
+        if let Some(instr) = code.get(index) {
             index += 1;
             opt_code.push(instr);
         } else {

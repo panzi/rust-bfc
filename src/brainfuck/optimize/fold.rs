@@ -6,28 +6,32 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
     let mut index = 0usize;
 
     loop {
-        if let Some(instr) = code.code.get(index) {
+        if let Some(instr) = code.get(index) {
             index += 1;
             match *instr {
                 Instruct::Move(val1) => {
                     let mut val = val1;
-                    while let Some(Instruct::Move(val2)) = code.code.get(index) {
+                    while let Some(Instruct::Move(val2)) = code.get(index) {
                         index += 1;
                         val += *val2;
                     }
-                    opt_code.push_move(val);
+                    if val != 0 {
+                        opt_code.push_move(val);
+                    }
                 },
                 Instruct::Add(val1) => {
                     let mut val = val1;
-                    while let Some(Instruct::Add(val2)) = code.code.get(index) {
+                    while let Some(Instruct::Add(val2)) = code.get(index) {
                         index += 1;
                         val = val + *val2;
                     }
-                    opt_code.push_add(val);
+                    if val != Int::zero() {
+                        opt_code.push_add(val);
+                    }
                 },
                 Instruct::Set(val1) => {
                     let mut val = val1;
-                    while let Some(Instruct::Set(val2)) = code.code.get(index) {
+                    while let Some(Instruct::Set(val2)) = code.get(index) {
                         index += 1;
                         val = *val2;
                     }

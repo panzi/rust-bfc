@@ -367,7 +367,7 @@ int main() {
 
         for instr in code.iter() {
             if let Instruct::WriteStr(data) = instr {
-                if data.len() > 1 {
+                if data.len() > 1 && !str_table.contains_key(data) {
                     str_table.insert(data, str_table.len());
                 }
             }
@@ -424,7 +424,7 @@ brainfuck_main:
                 },
 
                 Instruct::Add(val) => {
-                    let v = val.i64();
+                    let v = val.as_i64();
                     if v == 1 {
                         write!(asm, "        inc  {} [r12]           ; {:nesting$}*ptr += 1;\n", prefix, "", nesting = nesting)?;
                     } else if v == -1 {
@@ -437,7 +437,7 @@ brainfuck_main:
                 },
 
                 Instruct::Set(val) => {
-                    write!(asm, "        mov  {} [r12], {:8} ; {:nesting$}*ptr  = {};\n", prefix, val.i64(), "", val.i64(), nesting = nesting)?;
+                    write!(asm, "        mov  {} [r12], {:8} ; {:nesting$}*ptr  = {};\n", prefix, val.as_i64(), "", val.as_i64(), nesting = nesting)?;
                 },
 
                 Instruct::Read => {

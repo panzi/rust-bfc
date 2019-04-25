@@ -8,7 +8,7 @@ pub trait BrainfuckInteger: PrimInt + WrappingShl + WrappingAdd + std::fmt::Debu
     fn get_least_byte(self) -> u8;
     fn from_byte(value: u8) -> Self;
     fn wrapping_usize(self) -> usize;
-    fn i64(self) -> i64;
+    fn as_i64(self) -> i64;
 }
 
 impl BrainfuckInteger for u8 {
@@ -30,7 +30,7 @@ impl BrainfuckInteger for u8 {
         self as usize
     }
 
-    fn i64(self) -> i64 {
+    fn as_i64(self) -> i64 {
         self as i64
     }
 }
@@ -54,7 +54,7 @@ impl BrainfuckInteger for i8 {
         self as usize
     }
 
-    fn i64(self) -> i64 {
+    fn as_i64(self) -> i64 {
         self as i64
     }
 }
@@ -78,7 +78,7 @@ impl BrainfuckInteger for u16 {
         self as usize
     }
 
-    fn i64(self) -> i64 {
+    fn as_i64(self) -> i64 {
         self as i64
     }
 }
@@ -102,7 +102,7 @@ impl BrainfuckInteger for i16 {
         self as usize
     }
 
-    fn i64(self) -> i64 {
+    fn as_i64(self) -> i64 {
         self as i64
     }
 }
@@ -126,7 +126,7 @@ impl BrainfuckInteger for u32 {
         self as usize
     }
 
-    fn i64(self) -> i64 {
+    fn as_i64(self) -> i64 {
         self as i64
     }
 }
@@ -150,7 +150,7 @@ impl BrainfuckInteger for i32 {
         self as usize
     }
 
-    fn i64(self) -> i64 {
+    fn as_i64(self) -> i64 {
         self as i64
     }
 }
@@ -174,7 +174,7 @@ impl BrainfuckInteger for u64 {
         self as usize
     }
 
-    fn i64(self) -> i64 {
+    fn as_i64(self) -> i64 {
         self as i64
     }
 }
@@ -198,7 +198,7 @@ impl BrainfuckInteger for i64 {
         self as usize
     }
 
-    fn i64(self) -> i64 {
+    fn as_i64(self) -> i64 {
         self as i64
     }
 }
@@ -222,7 +222,7 @@ impl BrainfuckInteger for isize {
         self as usize
     }
 
-    fn i64(self) -> i64 {
+    fn as_i64(self) -> i64 {
         self as i64
     }
 }
@@ -242,7 +242,7 @@ impl BrainfuckInteger for usize {
         "size_t"
     }
 
-    fn i64(self) -> i64 {
+    fn as_i64(self) -> i64 {
         self as i64
     }
 
