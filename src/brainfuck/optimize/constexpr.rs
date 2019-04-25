@@ -58,6 +58,7 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
                     dirty[ptr] = true;
                     if ptr != current_ptr {
                         opt_code.push_move(current_ptr as isize - ptr as isize);
+                        current_ptr = ptr;
                     }
                     opt_code.push_read();
                 },
