@@ -127,8 +127,15 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
         }
 
         while let Some(instr) = code.get(pc) {
-            opt_code.push(instr);
-            pc += 1;
+            match *instr {
+                Instruct::LoopEnd(pc_loop_start) if opt_code.loop_stack.is_empty() => {
+                    pc = pc_loop_start;
+                },
+                _ => {
+                    opt_code.push(instr);
+                    pc += 1;
+                }
+            }
         }
     }
 
