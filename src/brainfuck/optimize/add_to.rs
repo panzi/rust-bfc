@@ -39,6 +39,7 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
                             end_index += 1;
                         },
                         Some(Instruct::LoopEnd(_)) if offset == 0 => {
+                            end_index += 1;
                             break decreased;
                         },
                         _ => {
@@ -57,7 +58,7 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
                         opt_code.push_add_to(offset);
                     }
                     opt_code.push_set(Int::zero());
-                    index = end_index + 1;
+                    index = end_index;
                 } else {
                     opt_code.push_loop_start();
                     index += 1;
