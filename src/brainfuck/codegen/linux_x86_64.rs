@@ -196,7 +196,7 @@ brainfuck_main:
                                 format!("[r12-{}]", -*off * int_size)
                             };
                             let padding = if dest.len() >= 14 { 0 } else { 14 - dest.len() };
-                            write!(asm, "        add  {} {}, {:padding$}; {:nesting$}ptr[{}] = *ptr;\n",
+                            write!(asm, "        add  {} {}, {:padding$}; {:nesting$}ptr[{}] += *ptr;\n",
                                 prefix, dest, reg, "", off, nesting = nesting, padding = padding)?;
                             pc += 1;
                         }
