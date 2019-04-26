@@ -49,7 +49,15 @@ pub fn generate<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_fi
                 last_was_move = false;
             },
 
-            Instruct::AddTo(_) => {
+            Instruct::AddTo(off) => {
+                let add_to_move = cur_move + off;
+                if add_to_move > max_move {
+                    max_move = add_to_move;
+                }
+
+                if add_to_move < min_move {
+                    min_move = add_to_move;
+                }
                 uses_mem = true;
                 last_was_move = false;
             },
