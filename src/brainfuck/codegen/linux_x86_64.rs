@@ -7,150 +7,9 @@ use std::fs::File;
 use std::io::Write;
 use std::collections::HashMap;
 use super::super::{Brainfuck, BrainfuckInteger, Instruct};
-use super::super::indent::indent;
-
-fn generate_asm_str(out: &mut Write, name: &str, data: &[u8]) -> std::io::Result<()> {
-    write!(out, "{:-8}db ", format!("{}:", name))?;
-    if data.len() > 0 {
-        let indent = " ".to_string()
-            .repeat(std::cmp::max(name.len() + 1, 8) + 3)
-            .into_bytes();
-        let mut quote   = false;
-        let mut endline = false;
-        let mut first   = true;
-
-        for c in data.iter() {
-            match *c {
-                b'\n' => {
-                    if endline {
-                        out.write_all(b", \\\n")?;
-                        out.write_all(&indent)?;
-                    } else if quote {
-                        out.write_all(b"\",")?;
-                    } else if !first {
-                        out.write_all(b",")?;
-                    }
-                    out.write_all(b"10")?;
-                    endline = true;
-                    quote = false;
-                },
-                b' '..=b'&' | b'('..=b'[' | b']'..=b'~' => {
-                    if endline {
-                        out.write_all(b", \\\n")?;
-                        out.write_all(&indent)?;
-                        out.write_all(b"\"")?;
-                    } else if quote {
-                        // continuing quoted string
-                    } else if first {
-                        out.write_all(b"\"")?;
-                    } else {
-                        out.write_all(b",\"")?;
-                    }
-
-                    out.write_all(&[*c])?;
-
-                    endline = false;
-                    quote = true;
-                },
-                c => {
-                    if endline {
-                        out.write_all(b", \\\n")?;
-                        out.write_all(&indent)?;
-                    } else if quote {
-                        out.write_all(b"\",")?;
-                    } else if !first {
-                        out.write_all(b",")?;
-                    }
-
-                    write!(out, "{}", c as u32)?;
-
-                    endline = false;
-                    quote = false;
-                }
-            }
-            first = false;
-        }
-
-        if quote {
-            out.write_all(b"\"\n")?;
-        } else {
-            out.write_all(b"\n")?;
-        }
-    } else {
-        out.write_all(b"\"\"\n")?;
-    }
-
-    return Ok(());
-}
-
-fn generate_c_write_str(out: &mut Write, data: &[u8], nesting: usize) -> std::io::Result<()> {
-    if data.len() > 0 {
-        indent(out, nesting)?;
-        let multiline = if let Some(pos) = data.iter().position(|b| *b == b'\n') {
-            pos < data.len() - 1
-        } else {
-            false
-        };
-
-        if multiline {
-            write!(out, "fwrite(\n")?;
-            indent(out, nesting + 1)?;
-            write!(out, "\"")?;
-        } else {
-            write!(out, "fwrite(\"")?;
-        }
-
-        for c in data.iter() {
-            match *c {
-                b'\\' | b'"' => {
-                    out.write_all(&[b'\\', *c])?;
-                },
-
-                b'\n' => {
-                    if multiline {
-                        out.write_all(b"\\n\"\n")?;
-                        indent(out, nesting + 1)?;
-                        write!(out, "\"")?;
-                    } else {
-                        out.write_all(b"\\n")?;
-                    }
-                },
-
-                b'\0' => {
-                    out.write_all(b"\\0")?;
-                },
-
-                b'\r' => {
-                    out.write_all(b"\\r")?;
-                },
-
-                b'\t' => {
-                    out.write_all(b"\\t")?;
-                },
-
-                11u8 => {
-                    out.write_all(b"\\v")?;
-                },
-
-                8u8 => {
-                    out.write_all(b"\\b")?;
-                },
-
-                c if c >= 32 && c <= 126 => {
-                    out.write_all(&[c])?;
-                },
-
-                _ => {
-                    write!(out, "\\x{:02x}", c)?;
-                }
-            }
-        }
-
-        write!(out, "\", {}, 1, stdout);\n", data.len())?;
-    }
-
-    return Ok(());
-}
+use super::generate_c_write_str::generate_c_write_str;
+use super::generate_asm_str::generate_asm_str;
+use super::generate_c_runtime::generate_c_runtime;
 
 pub fn generate<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_file: &str) -> std::io::Result<Vec<String>> {
     let mut filenames = Vec::new();
@@ -190,6 +49,11 @@ pub fn generate<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_fi
                 last_was_move = false;
             },
 
+            Instruct::AddTo(_) => {
+                uses_mem = true;
+                last_was_move = false;
+            },
+
             Instruct::Read => {
                 uses_mem = true;
                 last_was_move = false;
@@ -210,9 +74,7 @@ pub fn generate<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_fi
                 last_was_move = false;
             },
 
-            Instruct::WriteStr(_) => {
-                last_was_move = false;
-            }
+            Instruct::WriteStr(_) => {}
         }
     }
 
@@ -227,135 +89,7 @@ pub fn generate<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_fi
         let mut runtime = File::create(&runtime_src_filename)?;
         filenames.push(runtime_src_filename);
 
-        write!(runtime, r##"#define _GNU_SOURCE
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/mman.h>
-#include <inttypes.h>
-#include <signal.h>
-#include <string.h>
-#include <unistd.h>
-
-#ifndef __linux__
-#   error operating system currently not supported
-#endif
-
-#define PAGESIZE {0}
-
-{1}* mem = NULL;
-size_t mem_size = 0;
-"##, pagesize, Int::c_type())?;
-
-        runtime.write_all(r##"
-struct sigaction segv_action;
-
-void brainfuck_main();
-
-void memmng(int signum, siginfo_t *info, void *vctx) {
-    (void)signum;
-
-    void *ptr = info->si_addr;
-    ucontext_t* ctx = (ucontext_t*)vctx;
-
-    if (!((ptr >= (void*)mem && ptr < (void*)mem + PAGESIZE) || (ptr >= (void*)mem + (mem_size - PAGESIZE) && ptr < (void*)mem + mem_size))) {
-        if (ptr >= (void*)mem + PAGESIZE && ptr < (void*)mem + (mem_size - PAGESIZE)) {
-            fprintf(stderr, "pid: %d, bogus SIGSEGV at 0x%zx\n", getpid(), (uintptr_t)ptr);
-            abort();
-        }
-        // Some other segmantation fault! This is a compiler error!
-        fprintf(stderr,
-            "unhandeled segmantation fault: pagesize = %zu, ptr = 0x%zX (offset %zu), mem = 0x%zX ... 0x%zX (size %zu)\n",
-            (size_t)PAGESIZE,
-            (uintptr_t)ptr, (uintptr_t)(ptr - (void*)mem),
-            (uintptr_t)(void*)mem, (uintptr_t)((void*)mem + mem_size), mem_size);
-        fflush(stderr);
-        abort();
-    }
-
-    if (SIZE_MAX - PAGESIZE < mem_size) {
-        fprintf(stderr, "out of address space\n");
-        fflush(stderr);
-        abort();
-    }
-
-    size_t new_size = mem_size + PAGESIZE;
-    if (mprotect((void*)mem, PAGESIZE, PROT_READ | PROT_WRITE) != 0) {
-        perror("release guard before page protection");
-        abort();
-    }
-
-    if (mprotect((void*)mem + (mem_size - PAGESIZE), PAGESIZE, PROT_READ | PROT_WRITE) != 0) {
-        perror("release guard after page protection");
-        abort();
-    }
-
-    void *new_mem = mremap((void*)mem, mem_size, new_size, MREMAP_MAYMOVE);
-    if (new_mem == MAP_FAILED) {
-        perror("mremap");
-        abort();
-    }
-
-    if (mprotect(new_mem, PAGESIZE, PROT_NONE) != 0) {
-        perror("mprotect guard before");
-        abort();
-    }
-
-    if (mprotect(new_mem + (new_size - PAGESIZE), PAGESIZE, PROT_NONE) != 0) {
-        perror("mprotect guard after");
-        abort();
-    }
-
-    if (ptr < (void*)mem + PAGESIZE) {
-        // memory underflow, move everything to the right
-        memmove(new_mem + PAGESIZE * 2, (void*)new_mem + PAGESIZE, mem_size - PAGESIZE * 2);
-        ptr += PAGESIZE;
-    }
-
-    ptr = new_mem + (uintptr_t)(ptr - (void*)mem);
-
-#ifdef __x86_64__
-    ctx->uc_mcontext.gregs[REG_R12] = (intptr_t)ptr;
-#else
-#   error architecture currently not supported
-#endif
-
-    mem = new_mem;
-    mem_size = new_size;
-}
-
-int main() {
-    memset(&segv_action, 0, sizeof(struct sigaction));
-
-    segv_action.sa_flags = SA_SIGINFO;
-    segv_action.sa_sigaction = memmng;
-    if (sigaction(SIGSEGV, &segv_action, NULL) == -1) {
-        perror("sigaction");
-        return EXIT_FAILURE;
-    }
-
-    mem_size = PAGESIZE * 3;
-    mem = mmap(NULL, mem_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (mem == MAP_FAILED) {
-        perror("mmap");
-        return EXIT_FAILURE;
-    }
-
-    if (mprotect((void*)mem, PAGESIZE, PROT_NONE) != 0) {
-        perror("mprotect guard before");
-        return EXIT_FAILURE;
-    }
-
-    if (mprotect((void*)mem + (mem_size - PAGESIZE), PAGESIZE, PROT_NONE) != 0) {
-        perror("mprotect guard after");
-        return EXIT_FAILURE;
-    }
-
-    brainfuck_main();
-
-    return 0;
-}
-"##.as_bytes())?;
+        generate_c_runtime(&mut runtime, Int::c_type(), pagesize)?;
 
         let mut str_table = HashMap::new();
         let mut loop_stack = Vec::new();
@@ -407,6 +141,13 @@ brainfuck_main:
             8 => "qword",
             x => panic!("unsupported cell size: {}", x),
         };
+        let reg = match int_size {
+            1 => "al",
+            2 => "ax",
+            4 => "eax",
+            8 => "rax",
+            x => panic!("unsupported cell size: {}", x),
+        };
         nesting = 0;
         let mut pc = 0;
         loop {
@@ -446,19 +187,28 @@ brainfuck_main:
                         pc += 1;
                     },
 
+                    Instruct::AddTo(_) => {
+                        write!(asm, "        mov         {:3} , [r12]\n", reg)?;
+                        while let Some(Instruct::AddTo(off)) = code.get(pc) {
+                            let dest    = if *off > 0 {
+                                format!("[r12+{}]", *off * int_size)
+                            } else {
+                                format!("[r12-{}]", -*off * int_size)
+                            };
+                            let padding = if dest.len() >= 14 { 0 } else { 14 - dest.len() };
+                            write!(asm, "        add  {} {}, {:padding$}; {:nesting$}ptr[{}] = *ptr;\n",
+                                prefix, dest, reg, "", off, nesting = nesting, padding = padding)?;
+                            pc += 1;
+                        }
+                        loop_count += 1;
+                    },
+
                     Instruct::Read => {
                         write!(asm, "        mov  rdi, [rel stdout]\n")?;
                         write!(asm, "        call fflush                ; {:nesting$}fflush(stdout);\n", "", nesting = nesting)?;
 
                         write!(asm, "        call getchar\n")?;
-
-                        match int_size {
-                            8 => write!(asm, "        mov  {} [r12], rax      ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
-                            4 => write!(asm, "        mov  {} [r12], eax      ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
-                            2 => write!(asm, "        mov  {} [r12], ax       ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
-                            1 => write!(asm, "        mov  {} [r12], al       ; {:nesting$}*ptr = getchar();\n", prefix, "", nesting = nesting)?,
-                            x => panic!("unsupported cell size: {}", x),
-                        }
+                        write!(asm, "        mov  {} [r12], {:7}      ; {:nesting$}*ptr = getchar();\n", prefix, reg, "", nesting = nesting)?;
                         pc += 1;
                     },
 

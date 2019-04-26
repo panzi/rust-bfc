@@ -143,6 +143,10 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
         self.code.push(Instruct::Set(val));
     }
 
+    pub fn push_add_to(&mut self, val: isize) {
+        self.code.push(Instruct::AddTo(val));
+    }
+
     pub fn push_read(&mut self) {
         self.code.push(Instruct::Read);
     }
@@ -169,9 +173,10 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
 
     pub fn push(&mut self, instr: &Instruct<Int>) {
         match instr {
-            Instruct::Move(val)     => self.push_move(*val),
+            Instruct::Move(off)     => self.push_move(*off),
             Instruct::Add(val)      => self.push_add(*val),
             Instruct::Set(val)      => self.push_set(*val),
+            Instruct::AddTo(off)    => self.push_add_to(*off),
             Instruct::Read          => self.push_read(),
             Instruct::Write         => self.push_write(),
             Instruct::LoopStart(_)  => self.push_loop_start(),
@@ -183,6 +188,7 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
     pub fn optimize(&self, options: optimize::Options) -> std::io::Result<Self> {
         let mut code = if options.fold { optimize::fold(self) } else { self.clone() };
         if options.set      { code = optimize::set(&code); }
+        if options.add_to   { code = optimize::add_to(&code); }
         if options.write    { code = optimize::write(&code); }
         if options.deadcode { code = optimize::deadcode(&code); }
         if options.fold     { code = optimize::fold(&code); }
@@ -191,6 +197,7 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
 
             if options.fold     { code = optimize::fold(&code); }
             if options.set      { code = optimize::set(&code); }
+            if options.add_to   { code = optimize::add_to(&code); }
             if options.write    { code = optimize::write(&code); }
             if options.deadcode { code = optimize::deadcode(&code); }
             if options.fold     { code = optimize::fold(&code); }
@@ -209,7 +216,7 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
                 match *instr {
                     Instruct::Move(off) => {
                         pc += 1;
-                        if off == std::isize::MIN || (ptr as isize) < -off {
+                        if -(ptr as isize) > off {
                             let diff = (-(ptr as isize) - off) as usize;
                             let chunk = vec![Int::zero(); diff];
                             mem.splice(..0, chunk);
@@ -233,6 +240,25 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
                         }
                         mem[ptr] = val;
                     },
+
+                    Instruct::AddTo(off) => {
+                        pc += 1;
+                        if -(ptr as isize) > off {
+                            let diff = (-(ptr as isize) - off) as usize;
+                            let chunk = vec![Int::zero(); diff];
+                            mem.splice(..0, chunk);
+                            ptr += diff;
+                            mem[0] = mem[ptr];
+                        } else {
+                            let target_ptr = (ptr as isize + off) as usize;
+                            let max_ptr = std::cmp::max(target_ptr, ptr);
+                            if max_ptr >= mem.len() {
+                                mem.resize(max_ptr + 1, Int::zero());
+                            }
+                            mem[target_ptr] = mem[target_ptr].wrapping_add(&mem[ptr]);
+                        }
+                    },
+
 
                     Instruct::Read => {
                         pc += 1;
@@ -316,6 +342,11 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
                     write!(out, "set {:?}\n", val)?;
                 },
 
+                Instruct::AddTo(off) => {
+                    indent(out, nesting)?;
+                    write!(out, "add_to {:?}\n", off)?;
+                },
+
                 Instruct::Read => {
                     indent(out, nesting)?;
                     out.write_all(b"read\n")?;
@@ -349,56 +380,102 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
     }
 
     pub fn write_bf(&self, out: &mut Write) -> std::io::Result<()> {
-        for instr in self.code.iter() {
-            match instr {
-                Instruct::Move(val) => {
-                    if *val > 0 {
-                        print_repeat(out, b">", *val as usize)?;
-                    } else {
-                        print_repeat(out, b"<", -*val as usize)?;
+        let mut index = 0usize;
+        loop {
+            if let Some(instr) = self.code.get(index) {
+                index += 1;
+                match *instr {
+                    Instruct::Move(off) => {
+                        if off > 0 {
+                            print_repeat(out, b">", off as usize)?;
+                        } else {
+                            print_repeat(out, b"<", -off as usize)?;
+                        }
                     }
-                }
 
-                Instruct::Add(val) => {
-                    if *val > Int::zero() {
-                        print_repeat(out, b"+", (*val).wrapping_usize())?;
-                    } else {
-                        print_repeat(out, b"-", (-*val).wrapping_usize())?;
-                    }
-                },
+                    Instruct::Add(val) => {
+                        if val > Int::zero() {
+                            print_repeat(out, b"+", val.wrapping_usize())?;
+                        } else {
+                            print_repeat(out, b"-", (-val).wrapping_usize())?;
+                        }
+                    },
 
-                Instruct::Set(val) => {
-                    write!(out, "[-]")?;
-                    if *val > Int::zero() {
-                        print_repeat(out, b"+", (*val).wrapping_usize())?;
-                    } else {
-                        print_repeat(out, b"-", (-*val).wrapping_usize())?;
-                    }
-                },
+                    Instruct::Set(val) => {
+                        write!(out, "[-]")?;
+                        if val > Int::zero() {
+                            print_repeat(out, b"+", val.wrapping_usize())?;
+                        } else {
+                            print_repeat(out, b"-", (-val).wrapping_usize())?;
+                        }
+                    },
 
-                Instruct::Read => {
-                    out.write_all(b",")?;
-                },
+                    Instruct::AddTo(off) => {
+                        let mut offsets = vec![off];
+                        while let Some(Instruct::AddTo(off)) = self.code.get(index) {
+                            offsets.push(*off);
+                            index += 1;
+                        }
+                        write!(out, "[-")?;
+                        let mut current_off = 0isize;
+                        for target_off in offsets {
+                            let off = target_off - current_off;
+                            if off > 0 {
+                                print_repeat(out, b">", off as usize)?;
+                                write!(out, "+")?;
+                                print_repeat(out, b"<", off as usize)?;
+                            } else {
+                                print_repeat(out, b"<", -off as usize)?;
+                                write!(out, "+")?;
+                                print_repeat(out, b">", -off as usize)?;
+                            }
+                            current_off = off;
+                        }
+                        if current_off > 0 {
+                            print_repeat(out, b"<", current_off as usize)?;
+                        } else if current_off < 0 {
+                            print_repeat(out, b">", -current_off as usize)?;
+                        }
+                        write!(out, "]")?;
 
-                Instruct::Write => {
-                    out.write_all(b".")?;
-                },
+                        match self.code.get(index) {
+                            Some(Instruct::Set(val)) if *val == Int::zero() => {
+                                index += 1;
+                            },
+                            _ => {
+                                return Err(std::io::Error::new(
+                                    std::io::ErrorKind::Other,
+                                    "this optimized brainfuck program cannot (easily) be converted back to brainfuck anymore"));
+                            }
+                        }
+                    },
 
-                Instruct::LoopStart(_) => {
-                    out.write_all(b"[")?;
-                },
+                    Instruct::Read => {
+                        out.write_all(b",")?;
+                    },
 
-                Instruct::LoopEnd(_) => {
-                    out.write_all(b"]")?;
-                },
-
-                Instruct::WriteStr(val) => {
-                    for byte in val.iter() {
-                        out.write_all(b"[-]")?;
-                        print_repeat(out, b"+", *byte as usize)?;
+                    Instruct::Write => {
                         out.write_all(b".")?;
+                    },
+
+                    Instruct::LoopStart(_) => {
+                        out.write_all(b"[")?;
+                    },
+
+                    Instruct::LoopEnd(_) => {
+                        out.write_all(b"]")?;
+                    },
+
+                    Instruct::WriteStr(ref val) => {
+                        for byte in val.iter() {
+                            out.write_all(b"[-]")?;
+                            print_repeat(out, b"+", *byte as usize)?;
+                            out.write_all(b".")?;
+                        }
                     }
                 }
+            } else {
+                break;
             }
         }
 
