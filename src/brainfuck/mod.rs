@@ -209,10 +209,9 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
                         return None;
                     }
                 },
-                Instruct::AddTo(off) => {
-                    if ptr + off == 0 {
-                        return None;
-                    }
+                Instruct::AddTo(_) => {
+                    // XXX: why does it break when I restrict this return to if ptr + off == 0?
+                    return None;
                 },
                 Instruct::LoopStart(_) => return None,
                 // TODO: if loop doesn't move ptr overall and isn't touching *ptr it can be skipped

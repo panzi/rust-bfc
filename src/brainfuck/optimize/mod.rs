@@ -41,7 +41,7 @@ impl Options {
         Options {
             fold:           true,
             set:            true,
-            add_to:         false, // TODO: change when fixed
+            add_to:         true,
             write:          true,
             deadcode:       true,
             constexpr:      true,

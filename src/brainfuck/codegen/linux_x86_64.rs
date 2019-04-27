@@ -300,7 +300,7 @@ bfmain:
                     Instruct::LoopEnd(pc_start) => {
                         nesting -= 4;
                         let loop_id = loop_stack.pop().unwrap();
-                        let stmt = if let Some(Instruct::Set(_)) = if pc_start > 0 { code.get(pc_start - 1) } else { None } {
+                        let stmt = if code.find_set_before(pc_start).is_some() {
                             "} while (*ptr);"
                         } else { "}" };
 

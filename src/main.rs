@@ -40,11 +40,11 @@ fn main() -> std::result::Result<(), std::io::Error> {
 Comma separated list of optimization features:
  * fold ........ fold consecutive + - < > operations
  * set ......... detect value setting
- * add_to ...... detect adding one cell to another WARNING: this is currently broken!
+ * add_to ...... detect adding one cell to another
  * write ....... join consecutive writes
  * constexpr ... execute code not dependant on input during compile time
  * deadcode .... eliminate dead code
- * all ......... all optimizations (except add_to)
+ * all ......... all optimizations
  * none ........ no optimizations (default)
 
 '-feature' removes the feature. E.g. you can write --opt all,-constexpr
