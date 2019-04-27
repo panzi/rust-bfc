@@ -56,24 +56,28 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
                     if let Some(true) = dirty.get(ptr) {
                         break;
                     }
-                    if -(ptr as isize) > off {
-                        let diff = (-(ptr as isize) - off) as usize;
-                        let chunk = vec![Int::zero(); diff];
-                        mem.splice(..0, chunk);
-                        let chunk = vec![false; diff];
-                        dirty.splice(..0, chunk);
-                        ptr += diff;
-                        mem[0] = mem[ptr];
-                    } else {
-                        let target_ptr = (ptr as isize + off) as usize;
-                        if let Some(true) = dirty.get(target_ptr) {
-                            break;
+                    if let Some(val) = mem.get(ptr) {
+                        let val = *val;
+                        if val != Int::zero() {
+                            if -(ptr as isize) > off {
+                                let diff = (-(ptr as isize) - off) as usize;
+                                let chunk = vec![Int::zero(); diff];
+                                mem.splice(..0, chunk);
+                                let chunk = vec![false; diff];
+                                dirty.splice(..0, chunk);
+                                ptr += diff;
+                                mem[0] = val;
+                            } else {
+                                let target_ptr = (ptr as isize + off) as usize;
+                                if let Some(true) = dirty.get(target_ptr) {
+                                    break;
+                                }
+                                if target_ptr >= mem.len() {
+                                    mem.resize(target_ptr + 1, Int::zero());
+                                }
+                                mem[target_ptr] = mem[target_ptr].wrapping_add(&val);
+                            }
                         }
-                        let max_ptr = std::cmp::max(target_ptr, ptr);
-                        if max_ptr >= mem.len() {
-                            mem.resize(max_ptr + 1, Int::zero());
-                        }
-                        mem[target_ptr] = mem[target_ptr].wrapping_add(&mem[ptr]);
                     }
                     pc += 1;
                 },

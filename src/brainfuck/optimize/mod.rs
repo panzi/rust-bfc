@@ -15,7 +15,7 @@ pub use constexpr::optimize as constexpr;
 pub struct Options {
     pub fold:           bool,
     pub set:            bool,
-    pub add_to:           bool,
+    pub add_to:         bool,
     pub write:          bool,
     pub deadcode:       bool,
     pub constexpr:      bool,
@@ -27,7 +27,7 @@ impl std::default::Default for Options {
         Options {
             fold:           false,
             set:            false,
-            add_to:          false,
+            add_to:         false,
             write:          false,
             deadcode:       false,
             constexpr:      false,

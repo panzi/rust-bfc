@@ -216,7 +216,12 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
                 },
                 Instruct::LoopStart(_) => return None,
                 // TODO: if loop doesn't move ptr overall and isn't touching *ptr it can be skipped
-                Instruct::LoopEnd(_) => return None,
+                Instruct::LoopEnd(_) => {
+                    if ptr == 0 {
+                        return Some(Int::zero());
+                    }
+                    return None;
+                },
                 Instruct::Write | Instruct::WriteStr(_) => {},
             }
         }
@@ -281,19 +286,23 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
 
                     Instruct::AddTo(off) => {
                         pc += 1;
-                        if -(ptr as isize) > off {
-                            let diff = (-(ptr as isize) - off) as usize;
-                            let chunk = vec![Int::zero(); diff];
-                            mem.splice(..0, chunk);
-                            ptr += diff;
-                            mem[0] = mem[ptr];
-                        } else {
-                            let target_ptr = (ptr as isize + off) as usize;
-                            let max_ptr = std::cmp::max(target_ptr, ptr);
-                            if max_ptr >= mem.len() {
-                                mem.resize(max_ptr + 1, Int::zero());
+                        if let Some(val) = mem.get(ptr) {
+                            let val = *val;
+                            if val != Int::zero() {
+                                if -(ptr as isize) > off {
+                                    let diff = (-(ptr as isize) - off) as usize;
+                                    let chunk = vec![Int::zero(); diff];
+                                    mem.splice(..0, chunk);
+                                    ptr += diff;
+                                    mem[0] = val;
+                                } else {
+                                    let target_ptr = (ptr as isize + off) as usize;
+                                    if target_ptr >= mem.len() {
+                                        mem.resize(target_ptr + 1, Int::zero());
+                                    }
+                                    mem[target_ptr] = mem[target_ptr].wrapping_add(&val);
+                                }
                             }
-                            mem[target_ptr] = mem[target_ptr].wrapping_add(&mem[ptr]);
                         }
                     },
 
