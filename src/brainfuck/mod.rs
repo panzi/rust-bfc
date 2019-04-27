@@ -186,7 +186,7 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
     }
 
     pub fn find_set_before(&self, mut index: usize) -> Option<Int> {
-        if index > self.len() {
+        if index >= self.len() {
             if self.len() == 0 {
                 return None;
             }
