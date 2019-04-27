@@ -23,7 +23,6 @@ pub fn generate_c_runtime(runtime: &mut Write, cell_type: &str, pagesize: usize)
 
 #ifdef __x86_64__
 #   define REG_PTR1 REG_R12
-#   define REG_PTR2 REG_R11
 #else
 #   error architecture currently not supported
 #endif
@@ -113,7 +112,9 @@ void handle_sigint(int signum) {
 
         int option = ch;
 
-        while ((ch = getchar()) == ' ' || ch == '\t' || ch == '\r');
+        if (ch != '\n') {
+            while ((ch = getchar()) == ' ' || ch == '\t' || ch == '\r');
+        }
 
         if (ch == '\n' || ch == -1) {
             switch (option) {
@@ -193,21 +194,17 @@ void memmng(int signum, siginfo_t *info, void *vctx) {
     }
 
     greg_t ptr1 = ctx->uc_mcontext.gregs[REG_PTR1];
-    greg_t ptr2 = ctx->uc_mcontext.gregs[REG_PTR2];
 
     if (ptr < (void*)mem + PAGESIZE) {
         // memory underflow, move everything to the right
         memmove(new_mem + PAGESIZE * 2, new_mem + PAGESIZE, mem_size - PAGESIZE * 2);
         memset(new_mem + PAGESIZE, 0, PAGESIZE);
         ptr1 += PAGESIZE;
-        ptr2 += PAGESIZE;
     }
 
     ptr1 = (greg_t)new_mem + (ptr1 - (greg_t)(void*)mem);
-    ptr2 = (greg_t)new_mem + (ptr2 - (greg_t)(void*)mem);
 
     ctx->uc_mcontext.gregs[REG_PTR1] = (greg_t)ptr1;
-    ctx->uc_mcontext.gregs[REG_PTR2] = (greg_t)ptr2;
 
     mem = new_mem;
     mem_size = new_size;

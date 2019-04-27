@@ -219,18 +219,25 @@ bfmain:
                             }
                         } else {
                             write!(asm, "        mov         {:3} , [r12]\n", reg)?;
+                            let mut current_off = 0isize;
                             while let Some(Instruct::AddTo(off)) = code.get(pc) {
-                                // manual offset calculation so that the memory manager can fix up the 2nd pointer
-                                write!(asm, "        mov  r11, r12\n")?;
-                                if *off < 0 {
-                                    write!(asm, "        sub  qword r11, {}\n", -*off)?;
-                                } else {
-                                    write!(asm, "        add  qword r11, {}\n", *off)?;
+                                if current_off != *off {
+                                    generate_move(&mut asm, *off - current_off)?;
                                 }
-                                write!(asm, "        add  {} [r11], {:9}; {:nesting$}ptr[{}] += *ptr;\n",
+                                write!(asm, "        add  {} [r12], {:9}; {:nesting$}ptr[{}] += *ptr;\n",
                                     prefix, reg, "", *off, nesting = nesting)?;
+                                current_off = *off;
                                 pc += 1;
                             }
+                            let mut target_off = -current_off;
+
+                            // if there is a move now, we can do this both at once
+                            if let Some(Instruct::Move(off)) = code.get(pc) {
+                                target_off += *off;
+                                pc += 1;
+                                // TODO: this eats the comment of this move
+                            }
+                            generate_move(&mut asm, target_off)?;
                         }
                     },
 
@@ -354,6 +361,20 @@ int main() {{
     }
 
     return Ok(filenames);
+}
+
+fn generate_move(asm: &mut Write, off: isize) -> std::io::Result<()> {
+    if off == 1 {
+        write!(asm, "        inc  qword r12\n")
+    } else if off == -1 {
+        write!(asm, "        dec  qword r12\n")
+    } else if off < 0 {
+        write!(asm, "        sub  qword r12, {}\n", -off)
+    } else if off > 0 {
+        write!(asm, "        add  qword r12, {}\n", off)
+    } else {
+        Ok(())
+    }
 }
 
 pub fn compile_c(source_file: &str, object_file: &str, debug: bool, optlevel: u32) -> std::io::Result<()> {
