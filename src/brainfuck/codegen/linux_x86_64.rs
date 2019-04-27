@@ -164,9 +164,9 @@ bfmain:
                 match *instr {
                     Instruct::Move(off) => {
                         if int_size == 1 && off == 1 {
-                            write!(asm, "        inc  qword r12             ; {:nesting$}ptr ++;\n", "", nesting = nesting)?;
+                            write!(asm, "        inc  qword  r12            ; {:nesting$}ptr ++;\n", "", nesting = nesting)?;
                         } else if int_size == 1 && off == -1 {
-                            write!(asm, "        dec  qword r12             ; {:nesting$}ptr --;\n", "", nesting = nesting)?;
+                            write!(asm, "        dec  qword  r12            ; {:nesting$}ptr --;\n", "", nesting = nesting)?;
                         } else if off > 0 {
                             let val = off * int_size;
                             write!(asm, "        add  qword  r12 , {:8} ; {:nesting$}ptr  += {};\n", val, "", off, nesting = nesting)?;

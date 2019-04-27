@@ -84,6 +84,48 @@ void dbg() {
     }
     fprintf(stderr, "]\n");
 }
+
+void handle_sigint(int signum) {
+    (void)signum;
+    fflush(stdout);
+    fprintf(stderr, "\ncaught SIGINT\n");
+    dbg();
+    for (;;) {
+        fprintf(stderr, "Quit (q)/Continue (c)> ");
+        fflush(stderr);
+        int ch = getchar();
+
+        while (ch == ' ' || ch == '\t' || ch == '\r') {
+            ch = getchar();
+        }
+
+        int option = ch;
+
+        while ((ch = getchar()) == ' ' || ch == '\t' || ch == '\r');
+
+        if (ch == '\n' || ch == -1) {
+            switch (option) {
+                case -1:
+                    fprintf(stderr, "Q\n");
+                    exit(0);
+                    break;
+
+                case 'q': case 'Q':
+                    exit(0);
+                    break;
+
+                case 'c': case 'C':
+                    return;
+            }
+        }
+        while (ch != '\n' && ch != -1) {
+            ch = getchar();
+        }
+        if (option != '\n') {
+            fprintf(stderr, "invalid input: %c\n", option);
+        }
+    }
+}
 #endif
 
 void memmng(int signum, siginfo_t *info, void *vctx) {
@@ -166,6 +208,10 @@ int main() {
         perror("sigaction");
         return EXIT_FAILURE;
     }
+
+#ifndef NDEBUG
+    signal(SIGINT, handle_sigint);
+#endif
 
     mem_size = PAGESIZE * 3;
     mem = mmap(NULL, mem_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
