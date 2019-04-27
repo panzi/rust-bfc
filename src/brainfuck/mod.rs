@@ -185,6 +185,44 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
         }
     }
 
+    pub fn find_set_before(&self, mut index: usize) -> Option<Int> {
+        if index > self.len() {
+            if self.len() == 0 {
+                return None;
+            }
+            index = self.len() - 1;
+        }
+        let mut ptr = 0isize;
+        while index > 0 {
+            index -= 1;
+            match self.code[index] {
+                Instruct::Set(val) => {
+                    if ptr == 0 {
+                        return Some(val);
+                    }
+                },
+                Instruct::Move(off) => {
+                    ptr += off;
+                },
+                Instruct::Add(_) | Instruct::Read => {
+                    if ptr == 0 {
+                        return None;
+                    }
+                },
+                Instruct::AddTo(off) => {
+                    if ptr + off == 0 {
+                        return None;
+                    }
+                },
+                Instruct::LoopStart(_) => return None,
+                // TODO: if loop doesn't move ptr overall and isn't touching *ptr it can be skipped
+                Instruct::LoopEnd(_) => return None,
+                Instruct::Write | Instruct::WriteStr(_) => {},
+            }
+        }
+        return None;
+    }
+
     pub fn optimize(&self, options: optimize::Options) -> std::io::Result<Self> {
         let mut code = if options.fold { optimize::fold(self) } else { self.clone() };
         if options.set      { code = optimize::set(&code); }

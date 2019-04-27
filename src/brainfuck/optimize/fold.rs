@@ -30,12 +30,16 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
                     }
                 },
                 Instruct::Set(val1) => {
+                    let before = code.find_set_before(index - 1);
                     let mut val = val1;
                     while let Some(Instruct::Set(val2)) = code.get(index) {
                         index += 1;
                         val = *val2;
                     }
-                    opt_code.push_set(val);
+                    match before {
+                        Some(before_val) if before_val == val => {},
+                        _ => opt_code.push_set(val),
+                    }
                 },
                 _ => opt_code.push(instr)
             }

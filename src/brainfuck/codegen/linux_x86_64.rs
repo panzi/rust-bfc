@@ -115,7 +115,8 @@ pub fn generate<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_fi
             }
         }
 
-        asm.write_all(br##"bits 64
+        asm.write_all(
+br##"        bits 64
         section .data
 "##)?;
 
@@ -132,8 +133,8 @@ pub fn generate<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_fi
         extern getchar
         extern fflush
         extern mem
-        global brainfuck_main
-brainfuck_main:
+        global bfmain
+bfmain:
         push rbp
         mov  rbp, rsp
         push r12
@@ -196,19 +197,63 @@ brainfuck_main:
                     },
 
                     Instruct::AddTo(_) => {
-                        write!(asm, "        mov         {:3} , [r12]\n", reg)?;
-                        while let Some(Instruct::AddTo(off)) = code.get(pc) {
-                            let dest    = if *off > 0 {
-                                format!("[r12+{}]", *off * int_size)
-                            } else {
-                                format!("[r12-{}]", -*off * int_size)
-                            };
-                            let padding = if dest.len() >= 14 { 0 } else { 14 - dest.len() };
-                            write!(asm, "        add  {} {}, {:padding$}; {:nesting$}ptr[{}] += *ptr;\n",
-                                prefix, dest, reg, "", off, nesting = nesting, padding = padding)?;
-                            pc += 1;
-                        }
                         loop_count += 1;
+
+                        if let Some(val) = code.find_set_before(pc) {
+                            if val != Int::zero() {
+                                while let Some(Instruct::AddTo(off)) = code.get(pc) {
+                                    let dest = if *off > 0 {
+                                        format!("[r12+{}]", *off * int_size)
+                                    } else {
+                                        format!("[r12-{}]", -*off * int_size)
+                                    };
+                                    let padding = if dest.len() >= 14 { 0 } else { 14 - dest.len() };
+                                    write!(asm, "        add  {} {}, {:padding$}; {:nesting$}ptr[{}] += *ptr;\n",
+                                        prefix, dest, val.as_i64(), "", off, nesting = nesting, padding = padding)?;
+                                    pc += 1;
+                                }
+                            } else {
+                                while let Some(Instruct::AddTo(_)) = code.get(pc) {
+                                    pc += 1;
+                                }
+                            }
+                        } else {
+                            let mut may_underflow = false;
+                            let mut pc2 = pc;
+                            while let Some(Instruct::AddTo(off)) = code.get(pc2) {
+                                if *off < 0 {
+                                    may_underflow = true;
+                                    break;
+                                }
+                                pc2 += 1;
+                            }
+
+                            // XXX: I don't think I should need this guard here, but without it mandelbrot.bf get stuck in a loop.
+                            if may_underflow {
+                                write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}if (*ptr) {{\n", prefix, "", nesting = nesting)?;
+                                write!(asm, "        je   end{}\n", loop_count)?;
+                                nesting += 4;
+                            }
+
+                            write!(asm, "        mov         {:3} , [r12]\n", reg)?;
+                            while let Some(Instruct::AddTo(off)) = code.get(pc) {
+                                let dest = if *off > 0 {
+                                    format!("[r12+{}]", *off * int_size)
+                                } else {
+                                    format!("[r12-{}]", -*off * int_size)
+                                };
+                                let padding = if dest.len() >= 14 { 0 } else { 14 - dest.len() };
+                                write!(asm, "        add  {} {}, {:padding$}; {:nesting$}ptr[{}] += *ptr;\n",
+                                    prefix, dest, reg, "", off, nesting = nesting, padding = padding)?;
+                                pc += 1;
+                            }
+
+                            if may_underflow {
+                                nesting -= 4;
+                                let label = format!("end{}:", loop_count);
+                                write!(asm, "{:35}; {:nesting$}}}\n", label, "", nesting = nesting)?;
+                            }
+                        }
                     },
 
                     Instruct::Read => {
@@ -228,29 +273,27 @@ brainfuck_main:
 
                     Instruct::LoopStart(pc_loop_end) => {
                         loop_count += 1;
-                        loop_stack.push(loop_count);
 
-                        match if pc == 0 { None } else { code.get(pc - 1) } {
-                            Some(Instruct::Set(val)) => {
-                                if *val == Int::zero() {
-                                    pc = pc_loop_end;
-                                } else {
-                                    write!(asm, "loop_{}_start:                     ; {:nesting$}do {{\n", loop_count, "", nesting = nesting)?;
-                                    nesting += 4;
-                                    pc += 1;
-                                }
-                            },
-                            _ => {
-                                let stmt = if let Some(Instruct::Set(val2)) = code.get(pc_loop_end - 2) {
-                                    if *val2 == Int::zero() { "if" } else { "while" }
-                                } else { "while" };
-
-                                write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}{} (*ptr) {{\n", prefix, "", stmt, nesting = nesting)?;
-                                write!(asm, "        je   loop_{}_end\n", loop_count)?;
-                                write!(asm, "loop_{}_start:\n", loop_count)?;
+                        if let Some(val) = code.find_set_before(pc) {
+                            if val == Int::zero() {
+                                pc = pc_loop_end;
+                            } else {
+                                loop_stack.push(loop_count);
+                                write!(asm, "start{}:                           ; {:nesting$}do {{\n", loop_count, "", nesting = nesting)?;
                                 nesting += 4;
                                 pc += 1;
                             }
+                        } else {
+                            loop_stack.push(loop_count);
+                            let stmt = if let Some(Instruct::Set(val2)) = code.get(pc_loop_end - 2) {
+                                if *val2 == Int::zero() { "if" } else { "while" }
+                            } else { "while" };
+
+                            write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}{} (*ptr) {{\n", prefix, "", stmt, nesting = nesting)?;
+                            write!(asm, "        je   end{}\n", loop_count)?;
+                            write!(asm, "start{}:\n", loop_count)?;
+                            nesting += 4;
+                            pc += 1;
                         }
                     },
 
@@ -261,22 +304,19 @@ brainfuck_main:
                             "} while (*ptr);"
                         } else { "}" };
 
-                        match if pc == 0 { None } else { code.get(pc - 1) } {
-                            Some(Instruct::Set(val)) => {
-                                if *val == Int::zero() {
-                                    write!(asm, "                                   ; {:nesting$}{}\n", "", stmt, nesting = nesting)?;
-                                } else {
-                                    // This would be an infinite loop, right?
-                                    write!(asm, "        jmp  {:7} ; {:nesting$}{}\n", format!("loop_{}_start", loop_id), "", stmt, nesting = nesting)?;
-                                }
-                            },
-                            _ => {
-                                write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}{}\n", prefix, "", stmt, nesting = nesting)?;
-                                write!(asm, "        jne  loop_{}_start\n", loop_id)?;
+                        if let Some(val) = code.find_set_before(pc) {
+                            if val == Int::zero() {
+                                write!(asm, "                                   ; {:nesting$}{}\n", "", stmt, nesting = nesting)?;
+                            } else {
+                                // This would be an infinite loop, right?
+                                write!(asm, "        jmp  {:7} ; {:nesting$}{}\n", format!("start{}", loop_id), "", stmt, nesting = nesting)?;
                             }
+                        } else {
+                            write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}{}\n", prefix, "", stmt, nesting = nesting)?;
+                            write!(asm, "        jne  start{}\n", loop_id)?;
                         }
 
-                        write!(asm, "loop_{}_end:\n", loop_id)?;
+                        write!(asm, "end{}:\n", loop_id)?;
                         pc += 1;
                     },
 

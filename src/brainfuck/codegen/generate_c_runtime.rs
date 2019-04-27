@@ -10,21 +10,81 @@ pub fn generate_c_runtime(runtime: &mut Write, cell_type: &str, pagesize: usize)
 #include <signal.h>
 #include <string.h>
 #include <unistd.h>
+#include <ucontext.h>
 
+#define PAGESIZE {0}
+#define CELL_T {1}
+"##, pagesize, cell_type)?;
+
+        runtime.write_all(br##"
 #ifndef __linux__
 #   error operating system currently not supported
 #endif
 
-#define PAGESIZE {0}
+volatile CELL_T* mem = NULL;
+volatile size_t mem_size = 0;
 
-{1}* mem = NULL;
-size_t mem_size = 0;
-"##, pagesize, cell_type)?;
-
-        runtime.write_all(br##"
 struct sigaction segv_action;
 
-void brainfuck_main();
+void bfmain();
+
+#ifndef NDEBUG
+// this function can be called in a debugger to print information about the current state of the program
+void dbg() {
+    ucontext_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    CELL_T *ptr;
+
+    if (getcontext(&ctx) != 0) {
+        perror("getcontext");
+        ptr = NULL;
+    } else {
+        intptr_t rax = ctx.uc_mcontext.gregs[REG_RAX];
+        intptr_t r12 = ctx.uc_mcontext.gregs[REG_R12];
+        ptr = (CELL_T*)r12;
+        intptr_t index = ptr - mem;
+        if ((void*)ptr < (void*)mem + PAGESIZE || (void*)ptr >= (void*)mem + mem_size - PAGESIZE) {
+            fprintf(stderr,
+                "rax: %zd, r12: %zd, index: %zd, mem_size: %zu, *ptr: <out of bounds>\n",
+                rax, r12, index - PAGESIZE, mem_size);
+        } else {
+            fprintf(stderr,
+                "rax: %zd, r12: %zd, index: %zd, mem_size: %zu, *ptr: %zd\n",
+                rax, r12, index - PAGESIZE, mem_size, (intptr_t)mem[index]);
+        }
+    }
+
+    fprintf(stderr, "mem = [");
+    const size_t start = PAGESIZE / sizeof(CELL_T);
+    const size_t end = (mem_size - PAGESIZE) / sizeof(CELL_T);
+    for (size_t i = start; i < end;) {
+        CELL_T val = mem[i];
+
+        if (i != start) {
+            fprintf(stderr, ", ");
+        }
+
+        if (mem + i == ptr) {
+            fprintf(stderr, ">>%d<<", val);
+            ++ i;
+            continue;
+        }
+
+        size_t count = 1;
+        for (size_t j = i + 1; j < end && mem[j] == val && mem + j != ptr; ++ j) {
+            ++ count;
+        }
+        if (count > 3) {
+            fprintf(stderr, "%zd... x%zu", (intptr_t)val, count);
+            i += count;
+        } else {
+            fprintf(stderr, "%zd", (intptr_t)val);
+            ++ i;
+        }
+    }
+    fprintf(stderr, "]\n");
+}
+#endif
 
 void memmng(int signum, siginfo_t *info, void *vctx) {
     (void)signum;
@@ -43,17 +103,15 @@ void memmng(int signum, siginfo_t *info, void *vctx) {
             (size_t)PAGESIZE,
             (uintptr_t)ptr, (uintptr_t)(ptr - (void*)mem),
             (uintptr_t)(void*)mem, (uintptr_t)((void*)mem + mem_size), mem_size);
-        fflush(stderr);
         abort();
     }
 
     if (SIZE_MAX - PAGESIZE < mem_size) {
         fprintf(stderr, "out of address space\n");
-        fflush(stderr);
         abort();
     }
 
-    size_t new_size = mem_size + PAGESIZE;
+    const size_t new_size = mem_size + PAGESIZE;
     if (mprotect((void*)mem, PAGESIZE, PROT_READ | PROT_WRITE) != 0) {
         perror("release guard before page protection");
         abort();
@@ -82,7 +140,8 @@ void memmng(int signum, siginfo_t *info, void *vctx) {
 
     if (ptr < (void*)mem + PAGESIZE) {
         // memory underflow, move everything to the right
-        memmove(new_mem + PAGESIZE * 2, (void*)new_mem + PAGESIZE, mem_size - PAGESIZE * 2);
+        memmove(new_mem + PAGESIZE * 2, new_mem + PAGESIZE, mem_size - PAGESIZE * 2);
+        memset(new_mem + PAGESIZE, 0, PAGESIZE);
         ptr += PAGESIZE;
     }
 
@@ -125,7 +184,7 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    brainfuck_main();
+    bfmain();
 
     return 0;
 }
