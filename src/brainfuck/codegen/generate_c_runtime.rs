@@ -21,6 +21,13 @@ pub fn generate_c_runtime(runtime: &mut Write, cell_type: &str, pagesize: usize)
 #   error operating system currently not supported
 #endif
 
+#ifdef __x86_64__
+#   define REG_PTR1 REG_R12
+#   define REG_PTR2 REG_R11
+#else
+#   error architecture currently not supported
+#endif
+
 volatile CELL_T* mem = NULL;
 volatile size_t mem_size = 0;
 
@@ -28,7 +35,7 @@ struct sigaction segv_action;
 
 void bfmain();
 
-#ifndef NDEBUG
+#ifdef DEBUG
 // this function can be called in a debugger to print information about the current state of the program
 void dbg() {
     ucontext_t ctx;
@@ -38,19 +45,24 @@ void dbg() {
     if (getcontext(&ctx) != 0) {
         perror("getcontext");
         ptr = NULL;
+
+        fprintf(stderr,
+            "pid: %d, rax: <unknown>, r12: <unknown>, index: <unknown>, mem: 0x%zx, mem_size: %zu, usable_mem_size: %zu, pagesize: %u, *ptr: <unknown>\n",
+            getpid(), (uintptr_t)mem, mem_size, mem_size - PAGESIZE * 2, PAGESIZE);
     } else {
         intptr_t rax = ctx.uc_mcontext.gregs[REG_RAX];
         intptr_t r12 = ctx.uc_mcontext.gregs[REG_R12];
         ptr = (CELL_T*)r12;
         intptr_t index = ptr - mem;
+
+        fprintf(stderr,
+            "pid: %d, rax: %zd, r12: %zd, index: %zd, mem: 0x%zx, mem_size: %zu, usable_mem_size: %zu, pagesize: %u, *ptr: ",
+            getpid(), rax, r12, index - PAGESIZE, (uintptr_t)mem, mem_size, mem_size - PAGESIZE * 2, PAGESIZE);
+
         if ((void*)ptr < (void*)mem + PAGESIZE || (void*)ptr >= (void*)mem + mem_size - PAGESIZE) {
-            fprintf(stderr,
-                "rax: %zd, r12: %zd, index: %zd, mem_size: %zu, *ptr: <out of bounds>\n",
-                rax, r12, index - PAGESIZE, mem_size);
+            fprintf(stderr, "<out of bounds>\n");
         } else {
-            fprintf(stderr,
-                "rax: %zd, r12: %zd, index: %zd, mem_size: %zu, *ptr: %zd\n",
-                rax, r12, index - PAGESIZE, mem_size, (intptr_t)mem[index]);
+            fprintf(stderr, "%zd\n", (intptr_t)mem[index]);
         }
     }
 
@@ -131,7 +143,7 @@ void handle_sigint(int signum) {
 void memmng(int signum, siginfo_t *info, void *vctx) {
     (void)signum;
 
-    void *ptr = info->si_addr;
+    const void *const ptr = info->si_addr;
     ucontext_t* ctx = (ucontext_t*)vctx;
 
     if (!((ptr >= (void*)mem && ptr < (void*)mem + PAGESIZE) || (ptr >= (void*)mem + (mem_size - PAGESIZE) && ptr < (void*)mem + mem_size))) {
@@ -180,20 +192,22 @@ void memmng(int signum, siginfo_t *info, void *vctx) {
         abort();
     }
 
+    greg_t ptr1 = ctx->uc_mcontext.gregs[REG_PTR1];
+    greg_t ptr2 = ctx->uc_mcontext.gregs[REG_PTR2];
+
     if (ptr < (void*)mem + PAGESIZE) {
         // memory underflow, move everything to the right
         memmove(new_mem + PAGESIZE * 2, new_mem + PAGESIZE, mem_size - PAGESIZE * 2);
         memset(new_mem + PAGESIZE, 0, PAGESIZE);
-        ptr += PAGESIZE;
+        ptr1 += PAGESIZE;
+        ptr2 += PAGESIZE;
     }
 
-    ptr = new_mem + (uintptr_t)(ptr - (void*)mem);
+    ptr1 = (greg_t)new_mem + (ptr1 - (greg_t)(void*)mem);
+    ptr2 = (greg_t)new_mem + (ptr2 - (greg_t)(void*)mem);
 
-#ifdef __x86_64__
-    ctx->uc_mcontext.gregs[REG_R12] = (intptr_t)ptr;
-#else
-#   error architecture currently not supported
-#endif
+    ctx->uc_mcontext.gregs[REG_PTR1] = (greg_t)ptr1;
+    ctx->uc_mcontext.gregs[REG_PTR2] = (greg_t)ptr2;
 
     mem = new_mem;
     mem_size = new_size;
@@ -209,7 +223,7 @@ int main() {
         return EXIT_FAILURE;
     }
 
-#ifndef NDEBUG
+#ifdef DEBUG
     signal(SIGINT, handle_sigint);
 #endif
 

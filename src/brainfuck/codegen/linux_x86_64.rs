@@ -218,40 +218,18 @@ bfmain:
                                 }
                             }
                         } else {
-                            let mut may_underflow = false;
-                            let mut pc2 = pc;
-                            while let Some(Instruct::AddTo(off)) = code.get(pc2) {
-                                if *off < 0 {
-                                    may_underflow = true;
-                                    break;
-                                }
-                                pc2 += 1;
-                            }
-
-                            // XXX: I don't think I should need this guard here, but without it mandelbrot.bf get stuck in a loop.
-                            if may_underflow {
-                                write!(asm, "        cmp  {} [r12],        0 ; {:nesting$}if (*ptr) {{\n", prefix, "", nesting = nesting)?;
-                                write!(asm, "        je   end{}\n", loop_count)?;
-                                nesting += 4;
-                            }
-
                             write!(asm, "        mov         {:3} , [r12]\n", reg)?;
                             while let Some(Instruct::AddTo(off)) = code.get(pc) {
-                                let dest = if *off > 0 {
-                                    format!("[r12+{}]", *off * int_size)
+                                // manual offset calculation so that the memory manager can fix up the 2nd pointer
+                                write!(asm, "        mov  r11, r12\n")?;
+                                if *off < 0 {
+                                    write!(asm, "        sub  qword r11, {}\n", -*off)?;
                                 } else {
-                                    format!("[r12-{}]", -*off * int_size)
-                                };
-                                let padding = if dest.len() >= 14 { 0 } else { 14 - dest.len() };
-                                write!(asm, "        add  {} {}, {:padding$}; {:nesting$}ptr[{}] += *ptr;\n",
-                                    prefix, dest, reg, "", off, nesting = nesting, padding = padding)?;
+                                    write!(asm, "        add  qword r11, {}\n", *off)?;
+                                }
+                                write!(asm, "        add  {} [r11], {:9}; {:nesting$}ptr[{}] += *ptr;\n",
+                                    prefix, reg, "", *off, nesting = nesting)?;
                                 pc += 1;
-                            }
-
-                            if may_underflow {
-                                nesting -= 4;
-                                let label = format!("end{}:", loop_count);
-                                write!(asm, "{:35}; {:nesting$}}}\n", label, "", nesting = nesting)?;
                             }
                         }
                     },
@@ -381,7 +359,9 @@ int main() {{
 pub fn compile_c(source_file: &str, object_file: &str, debug: bool, optlevel: u32) -> std::io::Result<()> {
     let mut cmd = std::process::Command::new("gcc");
     let cmd = if debug {
-        cmd.arg("-g")
+        cmd
+            .arg("-g")
+            .arg("-DDEBUG")
     } else {
         &mut cmd
     };
