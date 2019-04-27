@@ -6,6 +6,7 @@ use regex::Regex;
 use std::fs::File;
 use std::io::Write;
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use super::super::{Brainfuck, BrainfuckInteger, Instruct};
 use super::generate_c_write_str::generate_c_write_str;
 use super::generate_asm_str::generate_asm_str;
@@ -378,14 +379,21 @@ fn generate_move(asm: &mut Write, off: isize) -> std::io::Result<()> {
 }
 
 pub fn compile_c(source_file: &str, object_file: &str, debug: bool, optlevel: u32) -> std::io::Result<()> {
-    let mut cmd = std::process::Command::new("gcc");
-    let cmd = if debug {
-        cmd
-            .arg("-g")
-            .arg("-DDEBUG")
+    let cc = if let Ok(cc) = std::env::var("CC") {
+        cc
     } else {
-        &mut cmd
+        "gcc".to_string()
     };
+    let mut cmd = std::process::Command::new(&cc);
+    if let Ok(cflags) = std::env::var("CFLAGS") {
+        for flag in cflags.split_whitespace() {
+            cmd.arg(flag);
+        }
+    }
+    if debug {
+        cmd.arg("-g")
+           .arg("-DDEBUG");
+    }
     let status = cmd
         .arg(format!("-O{}", optlevel))
         .arg("-Wall")
@@ -399,9 +407,9 @@ pub fn compile_c(source_file: &str, object_file: &str, debug: bool, optlevel: u3
 
     if !status.success() {
         let message = if let Some(code) = status.code() {
-            format!("gcc exited with status {}", code)
+            format!("{} exited with status {}", cc, code)
         } else {
-            "gcc terminated by signal".to_string()
+            format!("{} terminated by signal", cc)
         };
         return Err(std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -412,14 +420,22 @@ pub fn compile_c(source_file: &str, object_file: &str, debug: bool, optlevel: u3
 }
 
 pub fn assemble(source_file: &str, object_file: &str, debug: bool, optlevel: u32) -> std::io::Result<()> {
-    let mut cmd = std::process::Command::new("nasm");
-    let cmd = if debug {
+    let asm = if let Ok(asm) = std::env::var("ASM") {
+        asm
+    } else {
+        "nasm".to_string()
+    };
+    let mut cmd = std::process::Command::new(&asm);
+    if let Ok(asmflags) = std::env::var("ASMFLAGS") {
+        for flag in asmflags.split_whitespace() {
+            cmd.arg(flag);
+        }
+    }
+    if debug {
         cmd.arg("-g")
            .arg("-F")
-           .arg("dwarf")
-    } else {
-        &mut cmd
-    };
+           .arg("dwarf");
+    }
     let status = cmd
         .arg("-f")
         .arg("elf64")
@@ -431,9 +447,9 @@ pub fn assemble(source_file: &str, object_file: &str, debug: bool, optlevel: u32
 
     if !status.success() {
         let message = if let Some(code) = status.code() {
-            format!("nasm exited with status {}", code)
+            format!("{} exited with status {}", asm, code)
         } else {
-            "nasm terminated by signal".to_string()
+            format!("{} terminated by signal", asm)
         };
         return Err(std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -443,13 +459,24 @@ pub fn assemble(source_file: &str, object_file: &str, debug: bool, optlevel: u32
     return Ok(());
 }
 
-pub fn link(obj_files: &[String], binary_file: &str, debug: bool, optlevel: u32) -> std::io::Result<()> {
-    let mut cmd = std::process::Command::new("gcc");
-    let cmd = if debug {
-        cmd.arg("-g")
+pub fn link<I, S>(obj_files: I, binary_file: &str, debug: bool, optlevel: u32) -> std::io::Result<()>
+        where I: IntoIterator<Item=S>, S: AsRef<OsStr> {
+    let ld = if let Ok(ld) = std::env::var("LD") {
+        ld
+    } else if let Ok(cc) = std::env::var("CC") {
+        cc
     } else {
-        &mut cmd
+        "gcc".to_string()
     };
+    let mut cmd = std::process::Command::new(&ld);
+    if let Ok(ldflags) = std::env::var("LDFLAGS") {
+        for flag in ldflags.split_whitespace() {
+            cmd.arg(flag);
+        }
+    }
+    if debug {
+        cmd.arg("-g");
+    }
     let status = cmd
         .arg(format!("-O{}", optlevel))
         .arg("-o")
@@ -459,9 +486,9 @@ pub fn link(obj_files: &[String], binary_file: &str, debug: bool, optlevel: u32)
 
     if !status.success() {
         let message = if let Some(code) = status.code() {
-            format!("gcc exited with status {}", code)
+            format!("{} exited with status {}", ld, code)
         } else {
-            "gcc terminated by signal".to_string()
+            format!("{} terminated by signal", ld)
         };
         return Err(std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -497,7 +524,7 @@ pub fn compile<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_fil
         }
     }
 
-    for filename in obj_files {
+    for filename in &obj_files {
         std::fs::remove_file(filename)?;
     }
     return Ok(());
