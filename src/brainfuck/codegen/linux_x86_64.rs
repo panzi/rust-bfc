@@ -50,7 +50,7 @@ pub fn generate<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_fi
                 last_was_move = false;
             },
 
-            Instruct::AddTo(off) => {
+            Instruct::AddTo(off) | Instruct::SubFrom(off) => {
                 let add_to_move = cur_move + off;
                 if add_to_move > max_move {
                     max_move = add_to_move;
@@ -197,38 +197,60 @@ bfmain:
                         pc += 1;
                     },
 
-                    Instruct::AddTo(_) => {
+                    Instruct::AddTo(_) | Instruct::SubFrom(_) => {
                         loop_count += 1;
 
                         if let Some(val) = code.find_set_before(pc) {
                             if val != Int::zero() {
-                                while let Some(Instruct::AddTo(off)) = code.get(pc) {
-                                    let dest = if *off > 0 {
-                                        format!("[r12+{}]", *off * int_size)
-                                    } else {
-                                        format!("[r12-{}]", -*off * int_size)
-                                    };
-                                    let padding = if dest.len() >= 14 { 0 } else { 14 - dest.len() };
-                                    write!(asm, "        add  {} {}, {:padding$}; {:nesting$}ptr[{}] += *ptr;\n",
-                                        prefix, dest, val.as_i64(), "", off, nesting = nesting, padding = padding)?;
-                                    pc += 1;
+                                loop {
+                                    let instr = code.get(pc);
+                                    match instr {
+                                        Some(Instruct::AddTo(off)) | Some(Instruct::SubFrom(off)) => {
+                                            let dest = if *off > 0 {
+                                                format!("[r12+{}]", *off * int_size)
+                                            } else {
+                                                format!("[r12-{}]", -*off * int_size)
+                                            };
+                                            let padding = if dest.len() >= 14 { 0 } else { 14 - dest.len() };
+                                            if let Some(Instruct::AddTo(_)) = instr {
+                                                write!(asm, "        add  {} {}, {:padding$}; {:nesting$}ptr[{}] += *ptr;\n",
+                                                    prefix, dest, val.as_i64(), "", off, nesting = nesting, padding = padding)?;
+                                            } else {
+                                                write!(asm, "        sub  {} {}, {:padding$}; {:nesting$}ptr[{}] -= *ptr;\n",
+                                                    prefix, dest, val.as_i64(), "", off, nesting = nesting, padding = padding)?;
+                                            }
+                                            pc += 1;
+                                        },
+                                        _ => break
+                                    }
                                 }
                             } else {
-                                while let Some(Instruct::AddTo(_)) = code.get(pc) {
+                                while let Some(Instruct::AddTo(_)) | Some(Instruct::SubFrom(_)) = code.get(pc) {
                                     pc += 1;
                                 }
                             }
                         } else {
                             write!(asm, "        mov         {:3} , [r12]\n", reg)?;
                             let mut current_off = 0isize;
-                            while let Some(Instruct::AddTo(off)) = code.get(pc) {
-                                if current_off != *off {
-                                    generate_move(&mut asm, *off - current_off)?;
+                            loop {
+                                let instr = code.get(pc);
+                                match instr {
+                                    Some(Instruct::AddTo(off)) | Some(Instruct::SubFrom(off)) => {
+                                        if current_off != *off {
+                                            generate_move(&mut asm, *off - current_off)?;
+                                        }
+                                        if let Some(Instruct::AddTo(_)) = instr {
+                                            write!(asm, "        add  {} [r12], {:9}; {:nesting$}ptr[{}] += *ptr;\n",
+                                                prefix, reg, "", *off, nesting = nesting)?;
+                                        } else {
+                                            write!(asm, "        sub  {} [r12], {:9}; {:nesting$}ptr[{}] -= *ptr;\n",
+                                                prefix, reg, "", *off, nesting = nesting)?;
+                                        }
+                                        current_off = *off;
+                                        pc += 1;
+                                    },
+                                    _ => break
                                 }
-                                write!(asm, "        add  {} [r12], {:9}; {:nesting$}ptr[{}] += *ptr;\n",
-                                    prefix, reg, "", *off, nesting = nesting)?;
-                                current_off = *off;
-                                pc += 1;
                             }
                             let mut target_off = -current_off;
 

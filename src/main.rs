@@ -40,7 +40,7 @@ fn main() -> std::result::Result<(), std::io::Error> {
 Comma separated list of optimization features:
  * fold ........ fold consecutive + - < > operations
  * set ......... detect value setting
- * add_to ...... detect adding one cell to another
+ * add_to ...... detect adding/substracting one cell to/from another
  * write ....... join consecutive writes
  * constexpr ... execute code not dependant on input during compile time
  * deadcode .... eliminate dead code

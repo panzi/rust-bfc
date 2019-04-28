@@ -1,6 +1,11 @@
 extern crate num_traits;
 use super::super::{Brainfuck, BrainfuckInteger, Instruct};
-use std::collections::HashSet;
+use std::collections::HashMap;
+
+enum Op {
+    Add,
+    Sub
+}
 
 pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int>) -> Brainfuck<Int> {
     let mut opt_code = Brainfuck::new();
@@ -14,7 +19,7 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
     loop {
         match code.get(index) {
             Some(Instruct::LoopStart(_)) => {
-                let mut offsets = HashSet::new();
+                let mut offsets = HashMap::new();
                 let mut offset = 0isize;
                 let mut end_index = index + 1;
                 let mut decreased = false;
@@ -29,8 +34,11 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
                                 -1 if offset == 0 && !decreased => {
                                     decreased = true;
                                 },
-                                1 if offset != 0 && !offsets.contains(&offset) => {
-                                    offsets.insert(offset);
+                                1 if offset != 0 && !offsets.contains_key(&offset) => {
+                                    offsets.insert(offset, Op::Add);
+                                },
+                                -1 if offset != 0 && !offsets.contains_key(&offset) => {
+                                    offsets.insert(offset, Op::Sub);
                                 },
                                 _ => {
                                     break false;
@@ -50,12 +58,15 @@ pub fn optimize<Int: BrainfuckInteger + num_traits::Signed>(code: &Brainfuck<Int
 
                 if matched {
                     let mut sorted_offsets = Vec::with_capacity(offsets.len());
-                    for offset in offsets {
-                        sorted_offsets.push(offset);
+                    for offset in offsets.keys() {
+                        sorted_offsets.push(*offset);
                     }
                     sorted_offsets.sort_unstable();
                     for offset in sorted_offsets {
-                        opt_code.push_add_to(offset);
+                        match offsets[&offset] {
+                            Op::Add => opt_code.push_add_to(offset),
+                            Op::Sub => opt_code.push_sub_from(offset),
+                        }
                     }
                     opt_code.push_set(Int::zero());
                     index = end_index;
