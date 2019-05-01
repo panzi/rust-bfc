@@ -1,8 +1,6 @@
 extern crate num_traits;
-extern crate regex;
 
 use num_traits::Signed;
-use regex::Regex;
 use std::fs::File;
 use std::io::Write;
 use std::collections::HashMap;
@@ -523,18 +521,24 @@ pub fn link<I, S>(obj_files: I, binary_file: &str, debug: bool, optlevel: u32) -
 pub fn compile<Int: BrainfuckInteger + Signed>(code: &Brainfuck<Int>, binary_file: &str, debug: bool, optlevel: u32, keep_source: bool) -> std::io::Result<()> {
     let filenames = generate(code, &binary_file)?;
     let mut obj_files = Vec::new();
-    let c_re   = Regex::new(r"\.c$").unwrap();
-    let asm_re = Regex::new(r"\.asm$").unwrap();
 
     for filename in &filenames {
         if filename.ends_with(".c") {
-            let obj_file = format!("{}.o", c_re.replace(&filename, ""));
+            let mut obj_file = filename.to_owned();
+            obj_file.truncate(obj_file.len()-2);
+            obj_file.push_str(".o");
+
             compile_c(&filename, &obj_file, debug, optlevel)?;
             obj_files.push(obj_file);
-        } else {
-            let obj_file = format!("{}.o", asm_re.replace(&filename, ""));
+        } else if filename.ends_with(".asm") {
+            let mut obj_file = filename.to_owned();
+            obj_file.truncate(obj_file.len()-4);
+            obj_file.push_str(".o");
+
             assemble(&filename, &obj_file, debug, optlevel)?;
             obj_files.push(obj_file);
+        } else {
+            panic!("unhandeled file extension: {}", filename);
         }
     }
 
