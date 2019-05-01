@@ -4,6 +4,7 @@ mod add_to;
 mod write;
 mod deadcode;
 mod constexpr;
+mod skip;
 
 pub use fold::optimize as fold;
 pub use set::optimize as set;
@@ -11,6 +12,7 @@ pub use add_to::optimize as add_to;
 pub use write::optimize as write;
 pub use deadcode::optimize as deadcode;
 pub use constexpr::optimize as constexpr;
+pub use skip::optimize as skip;
 
 pub struct Options {
     pub fold:           bool,
@@ -20,6 +22,7 @@ pub struct Options {
     pub deadcode:       bool,
     pub constexpr:      bool,
     pub constexpr_echo: bool,
+    pub skip:           bool,
 }
 
 impl std::default::Default for Options {
@@ -32,6 +35,7 @@ impl std::default::Default for Options {
             deadcode:       false,
             constexpr:      false,
             constexpr_echo: false,
+            skip:           false,
         }
     }
 }
@@ -46,6 +50,7 @@ impl Options {
             deadcode:       true,
             constexpr:      true,
             constexpr_echo: true,
+            skip:           true,
         }
     }
 
@@ -58,6 +63,7 @@ impl Options {
             deadcode:       false,
             constexpr:      false,
             constexpr_echo: false,
+            skip:           false,
         }
     }
 }

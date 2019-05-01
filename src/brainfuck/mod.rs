@@ -239,6 +239,7 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
         if options.write    { code = optimize::write(&code); }
         if options.deadcode { code = optimize::deadcode(&code); }
         if options.fold     { code = optimize::fold(&code); }
+        if options.skip     { code = optimize::skip(&code); }
         if options.constexpr {
             code = optimize::constexpr(&code, options.constexpr_echo)?;
 
@@ -248,6 +249,7 @@ impl<Int: BrainfuckInteger + Signed> Brainfuck<Int> {
             if options.write    { code = optimize::write(&code); }
             if options.deadcode { code = optimize::deadcode(&code); }
             if options.fold     { code = optimize::fold(&code); }
+            if options.skip     { code = optimize::skip(&code); }
         }
         return Ok(code);
     }

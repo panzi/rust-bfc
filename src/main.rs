@@ -43,6 +43,7 @@ Comma separated list of optimization features:
  * add_to ...... detect adding/substracting one cell to/from another
  * write ....... join consecutive writes
  * constexpr ... execute code not dependant on input during compile time
+ * skip ........ skip ineffective instructions
  * deadcode .... eliminate dead code
  * all ......... all optimizations
  * none ........ no optimizations (default)
@@ -153,6 +154,12 @@ output formats:
                 },
                 "-constexpr" => {
                     options.constexpr = false;
+                },
+                "skip" | "+skip" => {
+                    options.skip = true;
+                },
+                "-skip" => {
+                    options.skip = false;
                 },
                 "" => {},
                 _ => {
