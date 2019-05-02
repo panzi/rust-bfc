@@ -3,8 +3,8 @@
 #[derive(Debug)]
 pub enum Error {
     IO(std::io::Error),
-    UnmatchedLoopStart(usize, usize),
-    UnmatchedLoopEnd(usize, usize),
+    UnmatchedLoopStart { lineno: usize, column: usize },
+    UnmatchedLoopEnd { lineno: usize, column: usize },
 }
 
 impl std::convert::From<std::io::Error> for Error {
@@ -18,10 +18,10 @@ impl Error {
         match *self {
             Error::IO(ref err) => write!(out, "error:{}: {}\n", input, err),
 
-            Error::UnmatchedLoopStart(lineno, column) =>
+            Error::UnmatchedLoopStart { lineno, column } =>
                 write!(out, "error:{}:{}:{}: unmatched '['\n", input, lineno, column),
 
-            Error::UnmatchedLoopEnd(lineno, column) =>
+            Error::UnmatchedLoopEnd { lineno, column } =>
                 write!(out, "error:{}:{}:{}: unmatched ']'\n", input, lineno, column),
         }
     }
