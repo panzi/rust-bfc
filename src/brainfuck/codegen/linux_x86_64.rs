@@ -479,8 +479,7 @@ pub fn assemble(source_file: &str, object_file: &str, debug: bool, optlevel: u32
     return Ok(());
 }
 
-pub fn link<I, S>(obj_files: I, binary_file: &str, debug: bool, optlevel: u32) -> std::io::Result<()>
-        where I: IntoIterator<Item=S>, S: AsRef<OsStr> {
+pub fn link(obj_files: impl IntoIterator<Item=impl AsRef<OsStr>>, binary_file: &str, debug: bool, optlevel: u32) -> std::io::Result<()> {
     let ld = if let Ok(ld) = std::env::var("LD") {
         ld
     } else if let Ok(cc) = std::env::var("CC") {
